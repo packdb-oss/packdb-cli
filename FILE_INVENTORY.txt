@@ -1,4 +1,4 @@
-# packdb-cli export from monorepo ae5d7978b35af5df3813cb4892419de94e83cdde
+# packdb-cli export from monorepo fe5ddf55720ec93d8685741fc560c4bac94852eb
 # 39 files
 5a4dbd4836353e4a9f151a6be0b4dbb7dedf0e14d66ccf47f8398234e988515b         80  .github/CODEOWNERS
 ce575ab185eab1d319b89ad41b414da89a1e836a93f01295cffbca83b7ec32c4        420  .github/ISSUE_TEMPLATE/bug_report.md
@@ -17,7 +17,7 @@ e31595d514e1680f1cde3d93448267f2a74354bb722b9512653f090f338a3814        510  CHA
 a77fa5dadbf534914871234b837cf4b5ee147381cb0c6d0e9473e556ca06983e       2007  CONTRIBUTING.md
 e1ce7fe24237e44c9d190f7dee4843f52ec9fb8ab2f77a5447794e2ae6dd1dfc      75284  Cargo.lock
 b55edabf97f2869f21f8d7ce0635650ea8b54f9bcc93ffeddf80b74b6409d261       1542  Cargo.toml
-c54f4b099598f37a73f8204142fd26f43ebdeaa4b05bd4cc9bfcc563fcac8384       3066  EXPORT_MANIFEST.md
+11b1ad99dceaeade2ef3979a8711c97eac6e1637a5e14bdb1bdca92096393563       3066  EXPORT_MANIFEST.md
 c6dfa89a3f968e98d35b1e5d9f45e5a81898e08e645a41063b698d32e4ba3a47       1610  GOVERNANCE.md
 538dba60bc0cbd0a447ef27192626b31e45c2609907b2b1e265c00dce3641725      11064  LICENSE
 ea64397b5aaf54e8c1300fb18853fcc0bce5a20ff46c118ea5c31c815d12cc99        877  MAINTAINERS.md
@@ -31,7 +31,7 @@ d63898d56a6ade84cf748bb4e7448b4292a64e121a9d6e61d409e1a2cc205d6d       1089  SEC
 c32b319972e1b6d79bcbeae33fffbe5b8bde52fc0d9e3f5ff721beeca71ea617        770  crates/packdb-query-cli/README.md
 71d0996b4a6209ab8e631e41037f5287a91e9f1bf1bbfdc071a3145091dce135      10373  crates/packdb-query-cli/src/main.rs
 1abc3071c5861cb7361d2feb730dc2e5ce36c6a0221866a0ce3dfb1fd81d0911        549  deny.toml
-f2b58e79ca3e38016a09aa52f02cca54c22f6b52806d72bbf837f21b50aba238      19567  docs/WORKFLOWS.md
+afa9b358fe2aabf702d661226df850167a289691704f75d51a09459864276ceb      20039  docs/WORKFLOWS.md
 afb72d454bd911fd19fede66e976d164f196d0ed38ed9ed6d7d44cfb165d1b24        426  rust-toolchain.toml
 9995201c7311f9e13ff703b081947c70b246af8c867183aade4ee18bbd9b1f55       2206  scripts/assert-shipped-contract.sh
 1741f3c4e95731f3cea5ea26009e0ab3eb9daa9d5ba67a86436850535f941886         95  scripts/coverage_declaration_only.txt

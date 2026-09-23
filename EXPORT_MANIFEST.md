@@ -18,7 +18,7 @@ reverted by the next regeneration.
 
 | | |
 | --- | --- |
-| source commit | `ae5d7978b35af5df3813cb4892419de94e83cdde` |
+| source commit | `fe5ddf55720ec93d8685741fc560c4bac94852eb` |
 | repository | `packdb-cli` |
 | members | 1 |
 | files | see `FILE_INVENTORY.txt` |
