@@ -18,8 +18,9 @@ These templates have no effect from this documentation directory.
 
 Require all stable job names in branch rules; do not use path filters that omit
 required checks. Protect main and tags, dismiss stale approvals, require code-owner
-review for workflows/auth/storage, and restrict bypass. Add Dependabot for Cargo and
-GitHub Actions weekly; its PRs pass the same checks. Enable secret scanning/push
+review for workflows/auth/storage, and restrict bypass. Add Dependabot for Cargo
+weekly; its PRs pass the same checks. Review action updates in the monorepo
+export overlay so regeneration preserves them. Enable secret scanning/push
 protection where available, with an equivalent local/CI scan where unavailable.
 
 Run untrusted PR code on disposable GitHub-hosted runners with contents:read,
@@ -257,8 +258,9 @@ Consequences a reader should not have to rediscover:
   workflow level, and a step fails the job if what arrived is not that commit.
   A moving branch would let a later SDK change alter a CLI candidate with no
   CLI review, and the binary's dependency closure would differ from the one
-  that was signed off. Bump it deliberately, in a pull request, alongside a
-  regenerated lockfile.
+  that was signed off. Bump it deliberately in a pull request and review
+  the lockfile. Regenerate it if the SDK dependency graph changed; a
+  metadata-only SDK update can leave the reviewed lockfile byte-identical.
 - Dependabot cannot see `packdb-client` or `packdb-otel` and is configured to
   ignore them. They move when the SDK export is regenerated.
 

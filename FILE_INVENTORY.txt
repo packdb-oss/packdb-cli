@@ -1,14 +1,14 @@
-# packdb-cli export from monorepo fe5ddf55720ec93d8685741fc560c4bac94852eb
+# packdb-cli export from monorepo f504e93abc948a7b2d181dfbc93c08e72ad4f30a
 # 39 files
 5a4dbd4836353e4a9f151a6be0b4dbb7dedf0e14d66ccf47f8398234e988515b         80  .github/CODEOWNERS
 ce575ab185eab1d319b89ad41b414da89a1e836a93f01295cffbca83b7ec32c4        420  .github/ISSUE_TEMPLATE/bug_report.md
 866952ad8d2940cecabcf978e6c972838cb1b0d6cbaa99241ec026ee0095ca9d        325  .github/ISSUE_TEMPLATE/feature_request.md
 8be2381baf9196a5451bbb3ef80f014fc42348c283d5ddeacbfe64263acc4e03        556  .github/PULL_REQUEST_TEMPLATE.md
-64e8d6ecc49ea5af677382b590670c95d9bb0bfdff5e49fa3bac4376777a979b        843  .github/dependabot.yml
-9fb777332baa2eeea496bb05308d0a213aaf0bddc333d387bdf2741ea19335f5      12236  .github/workflows/oss-candidate.yml
-aececfe97d73895269bc9b88c50640b0a7ce8da18054cbf7b5f8f3448aba8be1       3807  .github/workflows/oss-ci.yml
-f528cbc2baca8cac363e8fa6f7965649f34e4e29f65c2529a7ab1460dacdc701       3755  .github/workflows/oss-publish.yml
-3c8451379a07b0ca79a1f50a4066c26064c7556f78dbbb661c7ea40a62477531       3639  .github/workflows/oss-security.yml
+dafd018cbb36685de1ca8ae6395a2ac74b1aa1528890cade6cd80f84a7c1de13        719  .github/dependabot.yml
+ce284bf1591e97441680bc76749b9d7af3462bd1631d43a132fe998d6a583885      12244  .github/workflows/oss-candidate.yml
+040af2482ec28ab02786eae7f639f4c4095a6cb5b9f7c77ff3092d91b1b7c2e2       3811  .github/workflows/oss-ci.yml
+4763bea14c654971ebfca1c5b3d461c5a7db67d11508475fa804a3c882c10123       3759  .github/workflows/oss-publish.yml
+0b60292c27c2b4cd2f5fb88561ecf550caeca9319ab2b5f4000a04b36473b1f1       3643  .github/workflows/oss-security.yml
 4c41fc926fddfaae21cfa16fc3b3a86e406ad7ef4256e3c1490514edb21bc53f         24  .gitignore
 f512a5c57f95f00664e21a855d4f223b68560097df02d2da9c69aa5c61d7b62c       3614  AI_POLICY.md
 e31595d514e1680f1cde3d93448267f2a74354bb722b9512653f090f338a3814        510  CHANGELOG.md
@@ -17,7 +17,7 @@ e31595d514e1680f1cde3d93448267f2a74354bb722b9512653f090f338a3814        510  CHA
 a77fa5dadbf534914871234b837cf4b5ee147381cb0c6d0e9473e556ca06983e       2007  CONTRIBUTING.md
 e1ce7fe24237e44c9d190f7dee4843f52ec9fb8ab2f77a5447794e2ae6dd1dfc      75284  Cargo.lock
 b55edabf97f2869f21f8d7ce0635650ea8b54f9bcc93ffeddf80b74b6409d261       1542  Cargo.toml
-11b1ad99dceaeade2ef3979a8711c97eac6e1637a5e14bdb1bdca92096393563       3066  EXPORT_MANIFEST.md
+62f0d642c358e1779b55670b9f34b3052db8f16b504159fe80a46b8ce7eb5eb5       3066  EXPORT_MANIFEST.md
 c6dfa89a3f968e98d35b1e5d9f45e5a81898e08e645a41063b698d32e4ba3a47       1610  GOVERNANCE.md
 538dba60bc0cbd0a447ef27192626b31e45c2609907b2b1e265c00dce3641725      11064  LICENSE
 ea64397b5aaf54e8c1300fb18853fcc0bce5a20ff46c118ea5c31c815d12cc99        877  MAINTAINERS.md
@@ -31,7 +31,7 @@ d63898d56a6ade84cf748bb4e7448b4292a64e121a9d6e61d409e1a2cc205d6d       1089  SEC
 c32b319972e1b6d79bcbeae33fffbe5b8bde52fc0d9e3f5ff721beeca71ea617        770  crates/packdb-query-cli/README.md
 71d0996b4a6209ab8e631e41037f5287a91e9f1bf1bbfdc071a3145091dce135      10373  crates/packdb-query-cli/src/main.rs
 1abc3071c5861cb7361d2feb730dc2e5ce36c6a0221866a0ce3dfb1fd81d0911        549  deny.toml
-afa9b358fe2aabf702d661226df850167a289691704f75d51a09459864276ceb      20039  docs/WORKFLOWS.md
+51c58f312796f28ca8f8568209d9d1967a70108e2373d722578b20c64af8efba      20222  docs/WORKFLOWS.md
 afb72d454bd911fd19fede66e976d164f196d0ed38ed9ed6d7d44cfb165d1b24        426  rust-toolchain.toml
 9995201c7311f9e13ff703b081947c70b246af8c867183aade4ee18bbd9b1f55       2206  scripts/assert-shipped-contract.sh
 1741f3c4e95731f3cea5ea26009e0ab3eb9daa9d5ba67a86436850535f941886         95  scripts/coverage_declaration_only.txt

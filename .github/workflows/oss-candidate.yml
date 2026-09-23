@@ -9,7 +9,7 @@ concurrency:
 env:
   # The reviewed packdb-oss/packdb-sdk commit this repository builds against.
   # Changing it is a CLI decision, made in a CLI pull request.
-  SDK_COMMIT: "be927943474d574815ae95b244afb81246d9b9db"
+  SDK_COMMIT: "23f49daf15239c64cc161839b4b5991c1159bff4"
   # The DECLARED Linux runtime floor -- declared, not inherited. Asserted below
   # against the built binary rather than being whatever the runner image shipped.
   GLIBC_BASELINE: "2.35"
@@ -38,7 +38,7 @@ jobs:
       # repository. It expires with the job, it cannot write anywhere, and it
       # never reaches a shell: the action returns it as a step output and
       # checkout consumes it directly.
-      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: sdk-token
         with:
           app-id: ${{ secrets.OSS_SDK_APP_ID }}
@@ -137,7 +137,7 @@ jobs:
       # repository. It expires with the job, it cannot write anywhere, and it
       # never reaches a shell: the action returns it as a step output and
       # checkout consumes it directly.
-      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: sdk-token
         with:
           app-id: ${{ secrets.OSS_SDK_APP_ID }}
