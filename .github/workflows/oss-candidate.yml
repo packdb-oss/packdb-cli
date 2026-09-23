@@ -38,7 +38,7 @@ jobs:
       # repository. It expires with the job, it cannot write anywhere, and it
       # never reaches a shell: the action returns it as a step output and
       # checkout consumes it directly.
-      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: sdk-token
         with:
           app-id: ${{ secrets.OSS_SDK_APP_ID }}
@@ -137,7 +137,7 @@ jobs:
       # repository. It expires with the job, it cannot write anywhere, and it
       # never reaches a shell: the action returns it as a step output and
       # checkout consumes it directly.
-      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: sdk-token
         with:
           app-id: ${{ secrets.OSS_SDK_APP_ID }}
