@@ -1,0 +1,38 @@
+[package]
+name = "packdb-query-cli"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.94.1"
+description = "Command-line SQL client for PackDB, installed as the `packdb-query` binary."
+license = "Apache-2.0"
+readme = "README.md"
+keywords = ["packdb", "cli", "sql", "query"]
+repository = "https://github.com/packdb-oss/packdb-cli"
+# Retained deliberately during private staging. Publication requires
+# a separate reviewed allowlist change and release authorization.
+publish = false
+
+[[bin]]
+name = "packdb-query"
+path = "src/main.rs"
+
+[dependencies]
+# Enable the `sql` feature so the SQL client (including Arrow result
+# formatting) is compiled in. Flight SQL transport is opt-in via the
+# flight-sql feature on this app, which forwards to packdb-client.
+packdb-client = { version = "0.2.0", features = ["sql"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+tokio = { version = "1.49", features = ["full"] }
+
+[features]
+default = []
+# Enables Flight SQL transport and exposes the --flight-endpoint / --http-only
+# flags. Without this feature the CLI only supports HTTP.
+flight-sql = ["packdb-client/flight-sql"]
+
+# These crates are on the SDK/CLI extraction path, so their public API is
+# documentation a future consumer reads. Deny rather than warn: CI builds with
+# `RUSTFLAGS=-D warnings`, but a local `cargo build` does not, and a warning
+# nobody sees is how 749 undocumented items accumulated across this closure.
+[lints.rust]
+missing_docs = "deny"

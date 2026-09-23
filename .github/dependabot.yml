@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # These crates share types and traits across package boundaries. A single
+    # major-version bump of one member does not compile with the old peer.
+    groups:
+      arrow-stack:
+        patterns:
+          - arrow
+          - arrow-flight
+    # `packdb-client` and `packdb-otel` are resolved through the sibling SDK
+    # checkout until they are published, so dependabot cannot see or update
+    # them here. They move when the SDK export is regenerated, never on their
+    # own schedule.
+    ignore:
+      - dependency-name: packdb-client
+      - dependency-name: packdb-otel
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

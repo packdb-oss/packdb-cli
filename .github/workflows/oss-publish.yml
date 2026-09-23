@@ -1,0 +1,96 @@
+name: oss-publish
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Reviewed candidate workflow run ID for this exact commit
+        required: true
+        type: string
+      candidate_run_attempt:
+        description: Reviewed attempt number within the candidate run
+        required: true
+        type: string
+permissions:
+  contents: read
+env:
+  # The reviewed packdb-oss/packdb-sdk commit this repository builds against.
+  # Changing it is a CLI decision, made in a CLI pull request.
+  SDK_COMMIT: "be927943474d574815ae95b244afb81246d9b9db"
+concurrency:
+  group: oss-publication
+  cancel-in-progress: false
+defaults:
+  run:
+    working-directory: packdb-cli
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main' && vars.OSS_PUBLIC_RELEASE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: public-release
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+    steps:
+      # This repository resolves packdb-client and packdb-otel from a SIBLING
+      # packdb-sdk checkout, because the CLI depends on them by version and they
+      # are not published yet. Every gate here resolves dependencies, so every
+      # gate needs it. Both repositories are checked out into subdirectories so
+      # the sibling layout the manifest expects actually exists.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          path: packdb-cli
+
+      # A short-lived, read-only App installation token scoped to ONE
+      # repository. It expires with the job, it cannot write anywhere, and it
+      # never reaches a shell: the action returns it as a step output and
+      # checkout consumes it directly.
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        id: sdk-token
+        with:
+          app-id: ${{ secrets.OSS_SDK_APP_ID }}
+          private-key: ${{ secrets.OSS_SDK_APP_PRIVATE_KEY }}
+          owner: packdb-oss
+          repositories: packdb-sdk
+          permission-contents: read
+
+      # Pinned to a reviewed commit, not a branch. A moving `main` would let a
+      # later SDK change alter a CLI candidate with no CLI review, and the
+      # binary's dependency closure would differ from the one that was signed
+      # off. Bump this deliberately, in a PR, alongside a regenerated lockfile.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: packdb-oss/packdb-sdk
+          ref: ${{ env.SDK_COMMIT }}
+          token: ${{ steps.sdk-token.outputs.token }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: packdb-sdk
+
+      - name: Confirm the SDK checkout is the reviewed commit
+        working-directory: packdb-sdk
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          echo "reviewed: ${SDK_COMMIT}"
+          echo "actual:   ${actual}"
+          if [ "$actual" != "$SDK_COMMIT" ]; then
+            echo "::error title=SDK checkout is not the reviewed commit::refusing to build against an unreviewed SDK"
+            exit 1
+          fi
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: 3.12.10
+      - name: Verify approved candidate and publish allowlisted packages
+        env:
+          OSS_SOURCE_SHA: ${{ github.sha }}
+          OSS_CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          OSS_CANDIDATE_RUN_ATTEMPT: ${{ inputs.candidate_run_attempt }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -x scripts/oss-ci.sh
+          scripts/oss-ci.sh publish

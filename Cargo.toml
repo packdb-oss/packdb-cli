@@ -1,0 +1,42 @@
+# Standalone workspace for the PackDB query CLI.
+#
+# This repository is an export: its sources are assembled deterministically
+# from a pinned PackDB commit, recorded in EXPORT_MANIFEST.md.
+#
+# The CLI depends on `packdb-client`, which lives in the separate packdb-sdk
+# repository. That dependency is declared by VERSION, so once the SDK is
+# published this workspace resolves it from the registry with no local
+# checkout.
+#
+# Before the SDK is published there is no registry to resolve from, so the
+# patch below points at a sibling checkout. It is a development convenience,
+# not part of the package: Cargo ignores `[patch]` when packaging or
+# publishing, so a published crate carries only the version dependency.
+#
+# Expected layout for a pre-publication build:
+#
+#     <parent>/packdb-sdk/     <- the SDK export
+#     <parent>/packdb-cli/     <- this repository
+#
+# Delete this section once packdb-client is available from crates.io.
+
+[workspace]
+resolver = "3"
+members = ["crates/packdb-query-cli"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.94.1"
+license = "Apache-2.0"
+
+# The complete SDK dependency graph is:
+# packdb-query-cli -> packdb-client -> packdb-otel. Patching anything else
+# would train a reader to ignore unused-patch warnings -- exactly when one of
+# them means the local checkout is not being picked up at all.
+[patch.crates-io]
+packdb-client = { path = "../packdb-sdk/crates/packdb-client" }
+packdb-otel = { path = "../packdb-sdk/crates/packdb-otel" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

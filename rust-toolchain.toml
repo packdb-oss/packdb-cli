@@ -1,0 +1,9 @@
+# The toolchain this export is built and tested with.
+#
+# Carried explicitly because the export is a standalone repository: without
+# it, a build falls back to whatever the machine's default toolchain is, and
+# the first symptom is an MSRV failure that looks like a dependency problem.
+# Kept in lockstep with the `rust-version` each member manifest declares.
+[toolchain]
+channel = "1.94.1"
+components = ["clippy", "rustfmt"]
