@@ -9,7 +9,7 @@ concurrency:
 env:
   # The reviewed packdb-oss/packdb-sdk commit this repository builds against.
   # Changing it is a CLI decision, made in a CLI pull request.
-  SDK_COMMIT: "b1120402dc14d5325567ff4518791abd04018741"
+  SDK_COMMIT: "5c7cc6f66cc374a710e83c01d7817a26f9eb2a39"
   # The DECLARED Linux runtime floor -- declared, not inherited. Asserted below
   # against the built binary rather than being whatever the runner image shipped.
   GLIBC_BASELINE: "2.35"
