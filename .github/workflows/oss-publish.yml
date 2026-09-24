@@ -15,7 +15,7 @@ permissions:
 env:
   # The reviewed packdb-oss/packdb-sdk commit this repository builds against.
   # Changing it is a CLI decision, made in a CLI pull request.
-  SDK_COMMIT: "23f49daf15239c64cc161839b4b5991c1159bff4"
+  SDK_COMMIT: "b1120402dc14d5325567ff4518791abd04018741"
 concurrency:
   group: oss-publication
   cancel-in-progress: false
@@ -82,7 +82,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: 3.12.10
       - name: Verify approved candidate and publish allowlisted packages
