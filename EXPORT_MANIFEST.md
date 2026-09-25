@@ -18,8 +18,8 @@ reverted by the next regeneration.
 
 | | |
 | --- | --- |
-| source commit | `1d26a87713eeef94c6044003f6b8c14a8812f224` |
-| export kit | `1d26a87713eeef94c6044003f6b8c14a8812f224` |
+| source commit | `de26f23a736fd8653f4f3699d42f42cf6d53c65e` |
+| export kit | `de26f23a736fd8653f4f3699d42f42cf6d53c65e` |
 | repository | `packdb-cli` |
 | members | 1 |
 | files | see `FILE_INVENTORY.txt` |
