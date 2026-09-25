@@ -245,7 +245,7 @@ Consequences a reader should not have to rediscover:
   can write nowhere, and never reaches a shell: the action returns it as a step
   output and `actions/checkout` consumes it directly with
   `persist-credentials: false`. The workflows read
-  `secrets.OSS_SDK_APP_ID` and `secrets.OSS_SDK_APP_PRIVATE_KEY` as action
+  `secrets.OSS_SDK_APP_CLIENT_ID` and `secrets.OSS_SDK_APP_PRIVATE_KEY` as action
   inputs, never interpolating either into `run:` script text. Configure both
   names through the approved secrets runbook in **Actions secrets and
   Dependabot secrets** for this repository. GitHub supplies only Dependabot
