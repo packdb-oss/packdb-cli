@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - Prepared `packdb-query-cli` as a standalone Apache-2.0 workspace.
 - Published the binary compatibility contract with the crate, covering flags,
