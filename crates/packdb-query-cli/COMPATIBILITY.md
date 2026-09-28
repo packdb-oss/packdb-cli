@@ -87,6 +87,13 @@ contract even though the CLI's own source is untouched.
 The split that matters to a script: `1` means the query was wrong, `2` means the
 invocation or the environment was wrong, `3` means the transport misbehaved.
 
+Over HTTP the class comes from the server's response. A `400` whose body is the
+server's query or parse rejection (`Query error: ...` or `Parse error: ...`) is
+`1`; `401` and `403` are `2`; every other non-2xx response, including every `5xx`,
+is `3` until its meaning is established. A Flight SQL failure falls back to
+HTTP, so a query rejected after that fallback is still `1`. Version 0.2.0
+reported every non-2xx response as `3`, including invalid SQL.
+
 `--help` and `--version` exit `0`. Argument-parsing failures — an unknown flag,
 a missing `<SQL>`, an invalid `--format` — exit `2`, the same class as a
 connection failure. A script cannot tell "I typed the flag wrong" from "the

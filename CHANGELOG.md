@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Invalid SQL now exits `1` (SQL error) as `COMPATIBILITY.md` documents; 0.2.0
+  exited `3`. Rejected credentials (`401`/`403`) exit `2`. Other non-2xx server
+  responses still exit `3`. Built against `packdb-client` 0.2.1.
+
 ## 0.2.0
 
 - Prepared `packdb-query-cli` as a standalone Apache-2.0 workspace.
