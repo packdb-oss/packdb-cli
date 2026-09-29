@@ -317,25 +317,28 @@ print(json.dumps([
     for p in lock.get("package", [])
 ], indent=2))
 PY
-    local sdk_sha sdk_sums
-    sdk_sha="$(cd "$ROOT/../packdb-sdk" && git rev-parse HEAD 2>/dev/null || echo unknown)"
-    sdk_sums="$(shasum -a 256 "$ROOT/../packdb-sdk/SHA256SUMS" 2>/dev/null | cut -d' ' -f1 || echo unknown)"
+    # The SDK checkout the binary was built against, by commit and by git tree
+    # id -- a content digest of exactly those sources. No fallback: a candidate
+    # that cannot name its SDK must not be produced.
+    local sdk_sha sdk_tree
+    sdk_sha="$(git -C "$ROOT/../packdb-sdk" rev-parse HEAD)"
+    sdk_tree="$(git -C "$ROOT/../packdb-sdk" rev-parse 'HEAD^{tree}')"
     local sums
     sums="$(mktemp)"
     (cd dist && find . -type f ! -name SHA256SUMS -print0 | sort -z |
         xargs -0 shasum -a 256 >"$sums")
     mv "$sums" dist/SHA256SUMS
-    python3 - "$source_sha" "$version" "$run_id" "$run_attempt" "$sdk_sha" "$sdk_sums" \
+    python3 - "$source_sha" "$version" "$run_id" "$run_attempt" "$sdk_sha" "$sdk_tree" \
         >dist/release-record.json <<'PY'
 import json, subprocess, sys
-sha, version, run_id, attempt, sdk_sha, sdk_sums = sys.argv[1:7]
+sha, version, run_id, attempt, sdk_sha, sdk_tree = sys.argv[1:7]
 print(json.dumps({
     "repository": "packdb-cli",
     "packages": ["packdb-query-cli"],
     "version": version,
     "source_sha": sha,
     "sdk_source_sha": sdk_sha,
-    "sdk_inventory_sha256": sdk_sums,
+    "sdk_tree": sdk_tree,
     "toolchain": subprocess.run(["rustc", "--version"], capture_output=True, text=True, check=True).stdout.strip(),
     "gates": ["checks", "coverage", "compatibility", "security"],
     "scope": "full",

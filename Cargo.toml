@@ -1,7 +1,7 @@
 # Standalone workspace for the PackDB query CLI.
 #
-# This repository is an export: its sources are assembled deterministically
-# from a pinned PackDB commit, recorded in EXPORT_MANIFEST.md.
+# This repository is the canonical source of the query CLI; changes are made
+# here. It began as an export from the PackDB monorepo (see EXPORT_MANIFEST.md).
 #
 # The CLI depends on `packdb-client`, which lives in the separate packdb-sdk
 # repository. That dependency is declared by VERSION, so once the SDK is

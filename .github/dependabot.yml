@@ -14,7 +14,8 @@ updates:
           - arrow-flight
     # `packdb-client` and `packdb-otel` are resolved through the sibling SDK
     # checkout until they are published, so dependabot cannot see or update
-    # them here. They move when the SDK export is regenerated, never on their
+    # them here. They move when SDK_COMMIT is bumped to a new packdb-sdk
+    # release in a reviewed pull request, never on their
     # own schedule.
     ignore:
       - dependency-name: packdb-client
