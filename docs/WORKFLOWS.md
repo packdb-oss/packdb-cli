@@ -263,7 +263,8 @@ Consequences a reader should not have to rediscover:
   the lockfile. Regenerate it if the SDK dependency graph changed; a
   metadata-only SDK update can leave the reviewed lockfile byte-identical.
 - Dependabot cannot see `packdb-client` or `packdb-otel` and is configured to
-  ignore them. They move when the SDK export is regenerated.
+  ignore them. They move when `SDK_COMMIT` is bumped to a new `packdb-sdk`
+  release in a reviewed pull request.
 
 All of this is deletable in one change once the SDK is published: remove
 `[patch.crates-io]`, the App-token and sibling-checkout steps, the pinned

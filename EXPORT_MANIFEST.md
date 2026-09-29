@@ -1,64 +1,33 @@
-# Export manifest
+# Provenance
 
-This repository is **generated**, not authored. Its sources are assembled
-from one commit of the private PackDB monorepo, so this export can be
-regenerated and diffed against what was published rather than trusted from
-prose.
+This repository is the **canonical source** of `packdb-query-cli` (the `packdb-query` binary). Changes are authored,
+reviewed and released here.
 
-`Cargo.lock` is a reviewed file carried by the export kit, copied in
-unchanged rather than resolved against crates.io at export time. Registry
-state is therefore not an input: the same commit and the same kit produce
-the same tree whenever and wherever the export is run.
+It began as an export from the private PackDB monorepo. The last export was
+generated from monorepo commit `b497879865b45b60998a453cd4bd77e3eb81b271` and released as
+`v0.2.1` (`1449d9bb7a0ccc84d51d8e0e5b73e19bfcde9491`). The monorepo's export kit was then removed
+(packdb/packdb#1731), so nothing regenerates this tree and nothing reverts an
+edit made here.
 
-Do not edit these sources here. A change belongs upstream and reaches this
-repository by regenerating the export; an edit made here is silently
-reverted by the next regeneration.
+`Cargo.lock` is a reviewed file: dependency versions change only through a
+reviewed pull request -- Dependabot's or a maintainer's -- never at build time.
 
-## Provenance
+Release provenance is recorded per release. The `oss-candidate` workflow builds
+from the exact commit to be tagged and publishes a `release-record.json` and
+`SHA256SUMS` with every candidate; those files, not a repository-root
+inventory, identify what a release contains. The export-time
+`FILE_INVENTORY.txt` and `SHA256SUMS` were removed with the kit because they
+described the last export, not the current tree.
 
-| | |
-| --- | --- |
-| source commit | `b497879865b45b60998a453cd4bd77e3eb81b271` |
-| export kit | `b497879865b45b60998a453cd4bd77e3eb81b271` |
-| repository | `packdb-cli` |
-| members | 1 |
-| files | see `FILE_INVENTORY.txt` |
-| checksums | see `SHA256SUMS` |
-
-## Members
-
-- `packdb-query-cli` (`crates/packdb-query-cli`), from `apps/packdb-query`
-
-## What the export does to the sources
-
-1. **Extracted** from the commit with `git archive`, never from a working
-   tree, so uncommitted local state cannot leak in.
-2. **Inspected by the sanitiser.** When a source needs an internal citation
-   removed, the edit is anchored and must match exactly once. This target
-   currently expects `0` source edit(s); the denylist
-   still scans the complete result when that count is zero.
-3. **Manifests rewritten** so nothing inherits from the monorepo workspace.
-   Versions come from that workspace except for the reviewed SDK-only
-   dependency map below. `Cargo.lock` is then copied from the kit's reviewed
-   copy, after checking it against a fingerprint of these manifests.
-4. **Overlaid** with files that exist only in the export. For this SDK, that
-   includes the licence, standalone workspace, toolchain pin, community policy,
-   repository CI adapter and fail-closed workflows. Keeping them in the overlay
-   makes a regenerated repository reproduce its governance and checks too.
-5. **Refused** if any denylisted pattern survives -- internal citations,
-   internal crate names, internal hosts, or leftover workspace inheritance.
+This file keeps its name because the repository's policy check requires it.
 
 ## Deliberate decisions a reader should not mistake for oversights
 
-- **`publish = false` is retained.** This tree is a candidate. Clearing that
-  flag is part of an authorised publication, not part of building one.
-- **Repository metadata names `packdb-oss/packdb-sdk`.** Repository creation is
-  still a separate owner action; recording the decided destination here keeps
-  eventual package metadata reproducible.
-- **`packdb-client` documents what it excludes** -- credential issuance,
-  tenant resolution, control-plane access. That names internal concepts
-  because it is a boundary statement, and removing it would make the public
-  scope less legible rather than more.
+- **`publish = false` is retained.** Clearing that flag is part of an
+  authorised publication, not part of building a release.
+- **`packdb-client` and `packdb-otel` come from a pinned `packdb-sdk` commit**
+  (`SDK_COMMIT`, see `docs/WORKFLOWS.md`) until the SDK is published; they
+  move only when that pin is bumped in a reviewed pull request.
 - **Each member carries its own `LICENSE` copy.** `cargo package` includes
   only files inside a crate directory, so a root-only licence would ship
   with the repository but not with the published crate.
