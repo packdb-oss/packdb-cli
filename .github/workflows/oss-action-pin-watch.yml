@@ -1,0 +1,26 @@
+name: oss-action-pin-watch
+# Weekly, read-only check that every workflow action pin still matches the tag
+# it names and is not behind that action's latest stable release. Dependabot
+# proposes the updates; this keeps a signal for a moved tag or a pin that has
+# fallen behind. Not a required check: it gates nothing, it reports.
+on:
+  schedule:
+    - cron: '41 8 * * 2'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Self-test the pin check
+        run: python3 scripts/check_action_pins.py --self-test
+      - name: Check action pins and release tags
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/check_action_pins.py
