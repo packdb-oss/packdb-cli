@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2
+
+- Built against `packdb-client` 0.2.2. The CLI's flags, output and exit codes
+  are unchanged.
+- Replace the yanked `yoke-derive 0.8.3` lockfile entry with `0.8.4`.
+- Add Dependabot and a scheduled action-pin check, require the Apache 2.0
+  notice in every source file, and record this repository as the canonical
+  source of the CLI.
+
 ## 0.2.1
 
 - Invalid SQL now exits `1` (SQL error) as `COMPATIBILITY.md` documents; 0.2.0
