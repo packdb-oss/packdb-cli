@@ -9,7 +9,7 @@ These templates have no effect from this documentation directory.
 
 | Workflow/job | Trigger | Required evidence |
 | --- | --- | --- |
-| `oss-ci / checks` | Every PR, main push, merge group; weekly/manual full checks | Policy/contact completeness, format, Clippy, unit/doc tests, MSRV and affected shipping features; stable/broader matrix at scheduled/release gates, package contents, license/provenance checks |
+| `oss-ci / checks` | Every PR, main push, merge group; weekly/manual full checks | Policy/contact completeness, format, Clippy, unit/doc tests, MSRV and affected shipping features; stable/broader matrix at scheduled/release gates, package contents, license/provenance checks, source license notices (docs/SOURCE_HEADERS.md) |
 | `oss-ci / coverage` | Same | Per-file 80% gate with missing-data failure, declared features, canonical evaluator self-test and exception verification |
 | `oss-ci / compatibility` | Same | Parser corpus; SDK protocol/feature tests; CLI process/HTTP/Flight SQL tests; server three-signal ingest/query/restart and auth/config |
 | `oss-security / audit` | PR, main push, weekly | Fresh RustSec data, approved dependency licenses, secret scan of change/full export before release; exceptions have owner, scope and expiry |
@@ -74,8 +74,9 @@ than a fabricated change range. Full runs scan/score the entire selected source 
 
 ### Adapter subcommands
 
-- `checks`: validate policy fields/contacts, action pins, clean-export rules, license and package
-  allowlists; `cargo fmt --all -- --check`; Clippy warnings/dead-code errors;
+- `checks`: validate policy fields/contacts, action pins, clean-export rules, source license
+  notices (`scripts/check_source_headers.py`), license and package allowlists;
+  `cargo fmt --all -- --check`; Clippy warnings/dead-code errors;
   unit/integration/doc tests and `cargo doc` with warnings denied. Test MSRV 1.94.1
   on affected PRs and stable independently weekly/at release or when toolchain
   configuration changes. For each selected crate, test no-default/default and

@@ -11,6 +11,8 @@ issues and identify a contact for questions. Commercial affiliation does not cha
 review standards.
 
 Install the toolchain in rust-toolchain.toml and run `scripts/oss-ci.sh checks`.
+New Rust, Python and shell files open with the Apache 2.0 notice described in
+docs/SOURCE_HEADERS.md; `checks` rejects a file without it.
 Repository-specific integration services and platform requirements belong in README.
 Keep tests and docs with the behavior they cover. Use synthetic reproducers and never
 post credentials or customer data. Include commands/results, compatibility impact

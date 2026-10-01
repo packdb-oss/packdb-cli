@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright 2026 PackDb Contributors
+#
+# Licensed under the Apache License, Version 2.0
 set -euo pipefail
 
 # Release binaries print their version directly. Binaries installed with
