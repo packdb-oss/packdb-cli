@@ -1,0 +1,3 @@
+# Source files exempt from the Apache 2.0 notice, checked by
+# scripts/check_source_headers.py; see docs/SOURCE_HEADERS.md.
+# path<TAB>provenance<TAB>reason

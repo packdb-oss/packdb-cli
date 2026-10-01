@@ -194,6 +194,7 @@ cmd_checks() {
     check_policy
     check_action_pins
     python3 scripts/check_action_pins.py --self-test
+    python3 scripts/check_source_headers.py
     require_sdk_sibling
     python3 scripts/export_clean.py
     python3 scripts/coverage_gate.py --self-test
