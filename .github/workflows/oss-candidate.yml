@@ -91,7 +91,7 @@ jobs:
           if total > 100 * 1024 * 1024:
               raise SystemExit("Candidate exceeds 100 MiB: use reviewed release asset storage")
           PYCODE
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: packdb-cli/dist/
@@ -261,7 +261,7 @@ jobs:
           sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256"
           sha256sum -c "${NAME}.tar.gz.sha256" || shasum -a 256 -c "${NAME}.tar.gz.sha256"
           cat "${NAME}.tar.gz.sha256"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: binary-${{ matrix.target }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
