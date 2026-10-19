@@ -127,8 +127,8 @@ are orchestration contracts, not a claim those uncreated repositories passed CI.
 ## Environment and release configuration
 
 Create `private-candidate` and `public-release` environments. Public-release needs
-an independent reviewer, main-only deployment rules and scoped credentials/OIDC
-trust. Verify enforcement on the organization's private-repo plan. Keep repository
+a named release-owner review, main-only deployment rules and scoped credentials/OIDC
+trust. A sole maintainer may perform this review; independent review is welcome. Verify enforcement on the organization's private-repo plan. Keep repository
 variable `OSS_PUBLIC_RELEASE_ENABLED` absent or `false` until launch. Its presence
 is not a substitute for the environment review and SHA-bound release record.
 
