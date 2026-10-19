@@ -25,10 +25,10 @@ assignment is requested. This template does not introduce a separate CLA or DCO
 sign-off requirement. Any later change to contribution terms needs a published
 policy decision and cannot be silently applied retroactively.
 
-At least one independent maintainer approves a normal PR; security-sensitive,
-format-breaking and release changes receive a second maintainer review. All required
-checks must pass on the reviewed revision. No self-merge of unreviewed changes.
-While MAINTAINERS.md lists a single maintainer, independent approval is not
-possible; see that file for the interim rule and when it ends.
+Every PR requires maintainer review and all required checks to pass on the
+reviewed revision. A sole maintainer may self-review and merge their change after
+recording validation and material risks. Independent review is welcome when
+available; security-sensitive, format-breaking and release changes require an
+explicit review record. See MAINTAINERS.md for current review and responder coverage.
 Maintainership decisions follow GOVERNANCE.md. Contributors retain authorship and
 are welcome to help review and maintain their changes.

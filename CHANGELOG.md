@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.3
+
+- Build against SDK 0.2.3, which redacts credentials from diagnostic formatting.
+- Update the locked Rustls dependency to 0.23.46, resolving
+  RUSTSEC-2026-0346, RUSTSEC-2026-0347, RUSTSEC-2026-0348 and RUSTSEC-2026-0349.
+- Include dependency license texts and attribution in every binary archive.
+- Support single-maintainer public operation with recorded review and passing
+  checks. Pin candidate qualification to Ubuntu 24.04 for Python compatibility.
+
 ## 0.2.2
 
 - Built against `packdb-client` 0.2.2. The CLI's flags, output and exit codes
