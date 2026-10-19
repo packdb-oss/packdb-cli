@@ -196,7 +196,8 @@ jobs:
       - name: Generate dependency licenses and attribution
         run: |
           set -euo pipefail
-          cargo install --locked cargo-about@0.9.2
+          cargo install --locked --features cli cargo-about@0.9.2
+          cargo about --version
           cargo about generate --locked --features flight-sql --target "${{ matrix.target }}" \
             --format json --fail > "$RUNNER_TEMP/license-data.json"
           python3 scripts/render_notices.py --input "$RUNNER_TEMP/license-data.json" \
