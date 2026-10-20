@@ -7,6 +7,12 @@
 Private contacts: security@packdb.io (vulnerabilities), conduct@packdb.io
 (conduct reports and appeals).
 
+## Contact delivery
+
+External delivery to both reporting addresses was verified on 2026-10-20,
+including receipt in the subscribed maintainer's inbox. Retest after changes to
+the groups, subscriptions or mailbox routing.
+
 ## Single-maintainer operation
 
 The project may operate and release publicly with one maintainer. A second
