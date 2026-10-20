@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2026 PackDb Contributors
+# Copyright 2026 PackDB Contributors
 #
 # Licensed under the Apache License, Version 2.0
 """Fail when a first-party source file does not carry the Apache 2.0 notice.
@@ -12,7 +12,7 @@ Every tracked file is classified. Rust, Python and shell files -- including an
 extensionless script identified by its shebang -- are source and must open with
 a comment block, after the shebang if there is one, holding both
 
-    Copyright <year>[-<year>] PackDb Contributors      (or PackDB)
+    Copyright <year>[-<year>] PackDB Contributors
     Licensed under the Apache License, Version 2.0
 
 in that order; the full Apache boilerplate that follows the second line in
@@ -36,7 +36,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CHECKER_VERSION = "1"
+CHECKER_VERSION = "2"
 EXCEPTIONS = "scripts/source_header_exceptions.txt"
 
 # Comment marker of each source language.
@@ -48,7 +48,7 @@ NON_SOURCE_SUFFIXES = {
 }
 NON_SOURCE_NAMES = {"LICENSE", "CODEOWNERS", ".gitignore"}
 
-COPYRIGHT = re.compile(r"Copyright \d{4}(-\d{4})? PackD[Bb] Contributors")
+COPYRIGHT = re.compile(r"Copyright \d{4}(-\d{4})? PackDB Contributors")
 APACHE = re.compile(r'Licensed under the Apache License, Version 2\.0( \(the "License"\);)?')
 # A license statement that is not the Apache one.
 OTHER_LICENSE = re.compile(r"(?i)(SPDX-License-Identifier:|Licensed under|\bLicense:)")
@@ -145,14 +145,14 @@ def check(files: dict[str, str], exceptions_text: str) -> tuple[list[str], int]:
     return problems, examined
 
 
-SHORT_RS = "// Copyright 2025 PackDb Contributors\n//\n// Licensed under the Apache License, Version 2.0\n\n//! Docs.\n"
+SHORT_RS = "// Copyright 2025 PackDB Contributors\n//\n// Licensed under the Apache License, Version 2.0\n\n//! Docs.\n"
 LONG_RS = (
     "// Copyright 2026 PackDB Contributors\n//\n"
     '// Licensed under the Apache License, Version 2.0 (the "License");\n'
     "// you may not use this file except in compliance with the License.\n\n//! Docs.\n"
 )
-PY = "#!/usr/bin/env python3\n# Copyright 2026 PackDb Contributors\n#\n# Licensed under the Apache License, Version 2.0\n\"\"\"Doc.\"\"\"\n"
-SH = "#!/usr/bin/env bash\n# Copyright 2025 PackDb Contributors\n# Licensed under the Apache License, Version 2.0\nset -eu\n"
+PY = "#!/usr/bin/env python3\n# Copyright 2026 PackDB Contributors\n#\n# Licensed under the Apache License, Version 2.0\n\"\"\"Doc.\"\"\"\n"
+SH = "#!/usr/bin/env bash\n# Copyright 2025 PackDB Contributors\n# Licensed under the Apache License, Version 2.0\nset -eu\n"
 
 
 def self_test() -> None:
@@ -170,27 +170,28 @@ def self_test() -> None:
     }
     assert not problems(accepted), problems(accepted)
 
+    fails({"src/x.rs": SHORT_RS.replace("PackDB", "PackDb")}, "src/x.rs: missing")
     fails({"src/x.rs": "//! Docs only.\n"}, "src/x.rs: missing")
-    fails({"src/x.rs": "fn main() {}\n// Copyright 2025 PackDb Contributors\n"
+    fails({"src/x.rs": "fn main() {}\n// Copyright 2025 PackDB Contributors\n"
                        "// Licensed under the Apache License, Version 2.0\n"}, "src/x.rs: missing")
-    fails({"src/x.rs": "//! Copyright 2025 PackDb Contributors\n"
+    fails({"src/x.rs": "//! Copyright 2025 PackDB Contributors\n"
                        "//! Licensed under the Apache License, Version 2.0\n"}, "src/x.rs: missing")
-    fails({"scripts/x.py": "#!/usr/bin/env python3\n\"\"\"Copyright 2025 PackDb Contributors\n"
+    fails({"scripts/x.py": "#!/usr/bin/env python3\n\"\"\"Copyright 2025 PackDB Contributors\n"
                            "Licensed under the Apache License, Version 2.0\"\"\"\n"}, "scripts/x.py: missing")
     fails({"src/x.rs": "// Licensed under the Apache License, Version 2.0\n"
-                       "// Copyright 2025 PackDb Contributors\n"}, "src/x.rs: missing")
+                       "// Copyright 2025 PackDB Contributors\n"}, "src/x.rs: missing")
     fails({"src/x.rs": "// Copyright 2025 Someone Else\n// Licensed under the Apache License, Version 2.0\n"},
           "src/x.rs: missing")
-    fails({"src/x.rs": "// Portions Copyright 2025 PackDb Contributors\n"
+    fails({"src/x.rs": "// Portions Copyright 2025 PackDB Contributors\n"
                        "// Licensed under the Apache License, Version 2.0\n"}, "src/x.rs: missing")
-    fails({"src/x.rs": "// Copyright 2025 PackDb Contributors\n// Licensed under the MIT License\n"},
+    fails({"src/x.rs": "// Copyright 2025 PackDB Contributors\n// Licensed under the MIT License\n"},
           "other than Apache")
     fails({"src/x.rs": SHORT_RS.replace("// Licensed under the Apache License, Version 2.0",
                                         "// SPDX-License-Identifier: MIT")}, "other than Apache")
     fails({"scripts/x.sh": SH.replace("Version 2.0", "Version 1.1")}, "other than Apache")
     # The shebang must stay the first line, or the script stops being executable.
     fails({"scripts/x.sh": SH.split("\n", 1)[1] + "#!/usr/bin/env bash\n"}, "shebang is not the first line")
-    fails({"scripts/x.py": "# Copyright 2026 PackDb Contributors\n#!/usr/bin/env python3\n"},
+    fails({"scripts/x.py": "# Copyright 2026 PackDB Contributors\n#!/usr/bin/env python3\n"},
           "shebang is not the first line")
     fails({"scripts/tool": "#!/usr/bin/env python3\nprint()\n"}, "scripts/tool: missing")
     inner_attribute = "#![cfg(feature = \"sql\")]\n" + SHORT_RS

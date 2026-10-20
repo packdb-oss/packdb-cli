@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2025 PackDb Contributors
+# Copyright 2025 PackDB Contributors
 # Licensed under the Apache License, Version 2.0
 # Repository adapter for docs/WORKFLOWS.md.
 

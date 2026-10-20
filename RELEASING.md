@@ -1,7 +1,8 @@
 # Releasing
 
 Only named release maintainers may publish. The package remains `publish = false`
-during private staging. Repository visibility does not make crates.io private.
+until registry publication is explicitly enabled and qualified. Repository visibility,
+GitHub releases and crates.io publication are separate decisions; crates.io is public.
 
 ## Order of operations
 

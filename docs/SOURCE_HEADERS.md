@@ -11,14 +11,15 @@ A comment block opens the file, after the shebang when there is one, and holds
 these two lines in this order:
 
 ```text
-Copyright <year> PackDb Contributors
+Copyright <year> PackDB Contributors
 Licensed under the Apache License, Version 2.0
 ```
 
-`PackDB` is accepted for `PackDb`, and a year range such as `2025-2026` for a
-single year. The year is the year the file was created; existing statements are
-not rewritten. The full Apache boilerplate that continues after the second line
-in some Rust files is also accepted. Rust uses `//` comments, before any `//!`
+Use the spelling `PackDB Contributors`. A year range such as `2025-2026` is
+accepted in place of a single year. Preserve existing copyright years; casing
+normalization does not change them. The full Apache boilerplate that continues
+after the second line in some Rust files is also accepted. Rust uses `//` comments,
+before any `//!`
 crate or module documentation; Python and shell use `#`. A shebang stays on the
 first line so the script remains executable.
 
@@ -66,8 +67,8 @@ python3 scripts/check_source_headers.py --self-test  # self-test only
 `scripts/oss-ci.sh checks` runs it, so the required `oss-ci / checks` job and
 the candidate release validation (which runs `checks` in full) both fail on a
 missing or wrong notice. The self-test runs before every check; it covers the
-accepted forms, a missing notice, a wrong license, a displaced shebang, invalid
-and stale exceptions, and unclassified file types.
+accepted forms, wrong contributor casing, a missing notice, a wrong license,
+a displaced shebang, invalid and stale exceptions, and unclassified file types.
 
 ## Updating the checker
 

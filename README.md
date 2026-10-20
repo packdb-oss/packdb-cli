@@ -13,10 +13,10 @@ are outside this repository.
 
 ## Status and use
 
-The package is staged privately and is not published to crates.io. Its manifest keeps
-`publish = false`; changing that is a separate reviewed release action. Until a public
-release exists, this repository is source and candidate evidence rather than a
-supported installation channel.
+Source and binary releases are available from [GitHub Releases](https://github.com/packdb-oss/packdb-cli/releases).
+The package is not published to crates.io. Its manifest keeps `publish = false`;
+registry publication is a separate reviewed release action and does not follow
+automatically from repository visibility.
 
 [`crates/packdb-query-cli/COMPATIBILITY.md`](crates/packdb-query-cli/COMPATIBILITY.md)
 is the binding contract: flags, output formats, transport selection, exit codes and
@@ -29,11 +29,10 @@ enabled. Nothing is cross-compiled: a cross-built binary's runtime floor is a
 property of the sysroot it linked against, which is precisely what the declared
 glibc 2.35 floor exists to establish independently.
 
-## Building before the SDK is published
+## Building from source
 
-The CLI depends on `packdb-client` **by version**. Until that crate reaches
-crates.io there is no registry to resolve it from, so the workspace patches it to a
-sibling checkout:
+The CLI depends on `packdb-client` **by version**. While that crate is unavailable
+on crates.io, the workspace resolves it through a patch to a sibling SDK checkout:
 
 ```
 <parent>/packdb-sdk/     # the SDK export
@@ -43,7 +42,10 @@ sibling checkout:
 Without that sibling, every cargo command that resolves dependencies fails with
 `failed to load source for dependency 'packdb-client'`. This is expected, not a
 defect. `scripts/oss-ci.sh` states it plainly rather than letting cargo's message
-stand alone. Delete the `[patch.crates-io]` section once the SDK is published.
+stand alone. Use the SDK revision pinned by `SDK_COMMIT` in
+[the CI workflow](.github/workflows/oss-ci.yml). Remove the `[patch.crates-io]`
+section only when the required SDK version is available on crates.io and a clean
+registry build passes; making the SDK repository public is not sufficient.
 
 ## Development
 
