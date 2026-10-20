@@ -8,7 +8,7 @@ license = "Apache-2.0"
 readme = "README.md"
 keywords = ["packdb", "cli", "sql", "query"]
 repository = "https://github.com/packdb-oss/packdb-cli"
-# Retained deliberately during private staging. Publication requires
+# Registry publication remains disabled. Enabling it requires
 # a separate reviewed allowlist change and release authorization.
 publish = false
 

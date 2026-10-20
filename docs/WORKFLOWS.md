@@ -27,10 +27,9 @@ protection where available, with an equivalent local/CI scan where unavailable.
 Run untrusted PR code on disposable GitHub-hosted runners with contents:read,
 no secrets and persist-credentials:false. No `pull_request_target`, privileged
 workflow_run, self-hosted runner, or AI bot with write tokens for PR execution.
-External Actions are pinned to full commit SHAs resolved from the official v4 tags
-on 2026-09-17. Review those revisions before activation and preserve immutable pins
-on updates. Set timeouts, bounded
-artifact retention, and inspect workflow changes like production code.
+External Actions are pinned to immutable full commit SHAs. Review each revision
+and its upstream release when updating a pin. Set timeouts, bounded artifact
+retention, and inspect workflow changes like production code.
 
 ## Repository adapters required before activation
 

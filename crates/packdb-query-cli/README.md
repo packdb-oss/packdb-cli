@@ -13,10 +13,11 @@ stderr prefixes — is written down in
 
 ## Status
 
-Part of the [PackDB](https://packdb.io) workspace. **Not published to
-crates.io**, and `publish = false` in its manifest: it is on an extraction
-path whose repository boundary has not been decided yet. Depend on it by
-path within this workspace.
+The CLI is maintained in [packdb-cli](https://github.com/packdb-oss/packdb-cli).
+Source and binary archives are available from that repository's GitHub Releases.
+The crate is not published to crates.io and keeps `publish = false` until registry
+publication is approved. Source builds need the sibling SDK checkout described
+in the [repository README](../../README.md).
 
 ## Licence
 
