@@ -1,8 +1,7 @@
 # `packdb-query` compatibility contract
 
-What a released `packdb-query` binary promises its callers. Written before the
-crate is extracted, so the promise is decided here rather than inferred later
-from whatever a build happened to produce.
+What a released `packdb-query` binary promises its callers. This contract is
+maintained with the public CLI and included in its released archives.
 
 Read as: anything in **The contract** changes only with a deliberate,
 documented decision. Anything under **Not promised** may change without one.
@@ -163,56 +162,43 @@ they merely went unlisted.
 
 ## How this is tested
 
-`integration-tests/tests/cli/packdb_query_cli_test.rs` already splits along the
-line extraction needs:
+The public repository's [CI workflow](../../.github/workflows/oss-ci.yml) runs
+`checks`, `coverage`, and `compatibility` on pull requests, pushes to `main`, and
+merge-group revisions, as well as scheduled and manual runs. These are executed
+checks, not a compile-only promise deferred to a nightly server suite.
 
-1. **Argument parsing and validation — no server.** `--help`, `--version`, the
-   missing-SQL case, invalid `--format`, every valid `--format`, conflicting
-   auth options, and both environment variables. This half is portable and can
-   run in an extracted repository exactly as the parser corpora do.
-2. **Query execution — `#[ignore]`, requires a running PackDB server.** This
-   half cannot move, for the same reason parser testing must never wait on a
-   deployed server.
+The [compatibility adapter](../../scripts/oss-ci.sh) runs the CLI's tests on Rust
+1.94.1 with default features and with `flight-sql`, builds a release binary with
+Flight SQL, and runs the
+[shipped-contract script](../../scripts/assert-shipped-contract.sh) against it.
+The candidate workflow runs the same script against the binary extracted from
+each platform archive. The checks use the reviewed sibling SDK revision pinned
+by the workflow; they do not require a deployed PackDB server.
 
-Half 1 is where this contract is checked. A change to a flag name, a default,
-the precedence order, the format list or an exit code fails there — but *when*
-it fails is not what a reader assumes, so be precise about it.
+### What public checks cover
 
-These live in `packdb-integration-tests`, and `make ci-core` builds only
-`--lib --bins`. On a pull request they are therefore *compiled but not run*:
-CI Core's "Check integration-test targets compile (warning-clean)" step covers
-them, which catches a rename or a signature change but not a behaviour change.
-They are *executed* on the nightly default-branch schedule, the weekly full
-sweep, and on demand via `/run-integration-tests`.
+- **Configuration and argument handling:** unit tests in `src/main.rs` cover
+  default URL/timeout/output, supported formats, malformed basic authentication,
+  API-key precedence over malformed basic authentication, Flight endpoint wiring,
+  `--http-only`, and the HTTP-only configuration without the Flight feature.
+- **Built-binary checks:** the shipped-contract script checks `--help` and
+  `--version` exit `0`; missing SQL, invalid format values, and a refused
+  connection exit `2`; and both released transport flags appear in help.
+- **Release matrix:** the script checks that this contract includes the two
+  released targets and does not reintroduce the withdrawn Linux ARM64 or Intel
+  macOS targets. Native candidate jobs and the Linux glibc check provide the
+  corresponding artifact evidence.
 
-So a PR that silently changed an exit code would compile green and be caught
-that night, not at review time. That is the repository's deliberate policy for
-integration suites rather than a gap in this file — but a reader deciding how
-much weight to put on "the contract is tested" should know which of the two it
-is.
+### Limits of those checks
 
-### What half 1 now asserts, and what it still cannot
+The shipped-contract script does **not** prove every documented exit-code class:
+it exercises `0` and `2`, not server-query rejection (`1`) or protocol failure
+(`3`). It also does not assert stderr prefixes or stdout byte-exactness. Its
+summary must not be read as broader evidence than its individual assertions.
 
-Half 1 used only to assert that valid invocations *parse* — several tests ended
-in `.failure()` because no server was listening and treated that as success,
-without checking **which** failure. The exit code is the part scripts actually
-depend on, so this change added server-free assertions for each documented
-class: connection refused exits `2` with `ERROR:`, `--format bogus` and
-`--format JSON` exit `2` with `error:`, an unknown flag exits `2`, `--help` and
-`--version` exit `0`, the documented auth flag names are accepted, and the
-advertised transport flags match what the parser accepts.
-
-That last one is an invariant rather than a fixed expectation: it reads
-`--help`, and for each transport flag asserts the parser agrees with what the
-help text advertises. Written as a `#[cfg(feature = "flight-sql")]` test it
-would have gated on the *test crate's* feature rather than how the binary was
-built, and compiled out silently in CI — which is how it was written first.
-
-Still not assertable without a server, and so deliberately left out:
-
-- **Auth precedence.** The tests confirm each flag is accepted; proving
-  api-key beats token beats basic-auth means observing the outgoing header.
-- **`--timeout` behaviour**, which needs a server that is slow on purpose.
-- **stdout byte-exactness**, which needs a result to print.
-
-These belong to half 2, and stay internal for the same reason it does.
+The configuration tests pin selected precedence cases, not a complete test of
+outgoing authentication headers. End-to-end evidence for credential handling,
+server rejection/protocol responses, timeout behavior, formatted results, and
+Flight-to-HTTP fallback requires an appropriate test server or controlled stub.
+Server integration evidence is separate from this public CLI's server-free gate;
+passing that gate alone makes no claim about a deployed PackDB service.
