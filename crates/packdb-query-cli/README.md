@@ -19,6 +19,11 @@ The crate is not published to crates.io and keeps `publish = false` until regist
 publication is approved. Source builds need the sibling SDK checkout described
 in the [repository README](../../README.md).
 
+See the [quickstart](../../README.md#quickstart) for platform selection, archive
+verification, environment-based credentials, and a first query. CLI success does
+not independently establish telemetry completeness; the quickstart explains when
+to use the SDK's completeness-preserving API instead.
+
 ## Licence
 
 Apache-2.0. See [`LICENSE`](../../LICENSE) at the workspace root.
