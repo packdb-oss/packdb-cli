@@ -1,25 +1,25 @@
 # Governance
 
 MAINTAINERS.md names active maintainers, release owners and conduct/security contacts.
-CODEOWNERS routes reviews to verified teams with repository access. Initial
-maintainers are appointed by the PackDB project owner; later appointments require
-agreement of existing active maintainers, demonstrated constructive contribution,
-and a public recorded decision. Contributors need not be employees.
+CODEOWNERS routes reviews to the named maintainers. The PackDB project owner appoints
+maintainers based on constructive contribution and a recorded decision. Contributors
+need not be employees.
 
-Routine decisions use issue/PR discussion and an independent approval. Breaking
-APIs, support commitments, license changes and repository boundary changes require
-a written proposal, at least seven days for feedback except urgent security fixes,
-and agreement of two maintainers. If consensus fails, the named project lead records
-the decision and reasoning. Conflicted maintainers recuse themselves. No one may
-change third-party licensing rights through a governance vote.
+Routine decisions use issue/PR discussion and maintainer review. Breaking APIs,
+support commitments, license changes and repository boundary changes require a
+written proposal and at least seven days for feedback except urgent security fixes.
+The maintainer records the decision and reasoning. Independent review is welcome,
+but a second maintainer is not required. No governance decision can change
+third-party licensing rights.
 
-Releases require an accountable release owner and independent reviewer. Before
-launch, name at least two people able to recover repository and registry access.
-Use organization teams and least privilege; audit access on maintainer departures.
-An inactive maintainer may step down or be moved to emeritus status after a documented
-attempt to contact them. Handle urgent access revocation promptly when warranted.
+Releases require an accountable release owner, passing required checks, and a
+recorded review of the exact source and artifacts. A sole maintainer may perform
+that review. Document repository and registry recovery arrangements, use least
+privilege, and audit access when maintainers depart. Handle urgent access revocation
+promptly when warranted. Conduct responder coverage is stated in MAINTAINERS.md;
+independent handling cannot be promised while only one responder is available.
 
-Publish roadmaps and compatibility decisions in this repository without promising
-unfunded work. Community support is best effort. Paid-service commitments are separate
-and confer no control over technical acceptance. Security fixes may be coordinated
-privately and receive a public advisory after remediation.
+Publish roadmaps and compatibility decisions without promising unfunded work.
+Community support is best effort. Paid-service commitments are separate and confer
+no control over technical acceptance. Security fixes may be coordinated privately
+and receive a public advisory after remediation.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2026 PackDb Contributors
+# Copyright 2026 PackDB Contributors
 #
 # Licensed under the Apache License, Version 2.0
 """Fail when a workflow action pin moves or trails its latest stable release.

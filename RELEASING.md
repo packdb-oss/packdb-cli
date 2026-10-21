@@ -1,7 +1,8 @@
 # Releasing
 
 Only named release maintainers may publish. The package remains `publish = false`
-during private staging. Repository visibility does not make crates.io private.
+until registry publication is explicitly enabled and qualified. Repository visibility,
+GitHub releases and crates.io publication are separate decisions; crates.io is public.
 
 ## Order of operations
 
@@ -42,8 +43,14 @@ produced and verified; never a locally built one. Each archive carries its
 provenance, dependency inventory, licence and the compatibility contract, and its
 checksum is published alongside it.
 
+Binary archives also carry THIRD_PARTY_NOTICES.txt. The candidate generates it
+from the locked, target-filtered flight-sql graph with cargo-about 0.9.2, then
+preserves original dependency license, copyright and NOTICE files (including
+vendored legal files). Missing license coverage fails qualification. The extracted
+archive must contain the generated text byte for byte.
+
 Before public visibility, review reachable history, Actions artifacts and private
-release attachments; verify security and conduct contacts; name a second maintainer;
+release attachments; verify security and conduct contacts; record the release-owner review;
 and document registry recovery. Describe capabilities and observed limitations
 without maturity or production-quality claims. “Used in production” describes use
 only and provides no quality, HA, fitness, support, or commercial guarantee.

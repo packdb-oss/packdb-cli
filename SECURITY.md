@@ -1,9 +1,10 @@
 # Security policy
 
 Report suspected vulnerabilities privately to security@packdb.io. Do not open a
-public issue with exploit details, tokens or customer data. The contact must be
-monitored and tested before this repository opens. If available, the repository's
-GitHub private vulnerability reporting form is an additional channel.
+public issue with exploit details, tokens or customer data. If available, the
+repository's GitHub private vulnerability reporting form is an additional channel.
+See [MAINTAINERS.md](MAINTAINERS.md) for responder coverage and contact-delivery
+verification.
 
 Include affected version, platform, impact and a minimal synthetic reproducer.
 Maintainers aim to acknowledge within three business days and provide a triage

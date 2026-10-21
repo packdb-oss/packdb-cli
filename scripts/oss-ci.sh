@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2025 PackDb Contributors
+# Copyright 2025 PackDB Contributors
 # Licensed under the Apache License, Version 2.0
 # Repository adapter for docs/WORKFLOWS.md.
 
@@ -195,6 +195,7 @@ cmd_checks() {
     check_action_pins
     python3 scripts/check_action_pins.py --self-test
     python3 scripts/check_source_headers.py
+    python3 scripts/render_notices.py --self-test
     require_sdk_sibling
     python3 scripts/export_clean.py
     python3 scripts/coverage_gate.py --self-test

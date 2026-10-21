@@ -7,18 +7,25 @@
 Private contacts: security@packdb.io (vulnerabilities), conduct@packdb.io
 (conduct reports and appeals).
 
-## Interim single-maintainer rule
+## Contact delivery
 
-This repository has one maintainer, so the independent approval that
-CONTRIBUTING.md and GOVERNANCE.md require cannot happen yet. Until a second
-maintainer joins:
+External delivery to both reporting addresses was verified on 2026-10-20,
+including receipt in the subscribed maintainer's inbox. Retest after changes to
+the groups, subscriptions or mailbox routing.
 
-- `main` requires a pull request and every required check to pass; approvals are
-  not enforced.
-- The maintainer records a self-review in each pull request.
-- Conduct appeals go to the same contact and are recorded; there is no independent
-  appeal responder.
-- Release tags are restricted to the maintainer.
+## Single-maintainer operation
 
-Before this repository becomes public, name a second maintainer and require one
-independent approval on `main`.
+The project may operate and release publicly with one maintainer. A second
+maintainer is welcome but is not a prerequisite for public visibility or releases.
+
+- Changes go through pull requests and every required check must pass on the
+  revision being merged.
+- The maintainer records a self-review, including validation and material risks,
+  before merging their own change. Independent review is welcome when available.
+- Release decisions and the exact source and asset provenance are recorded.
+- Conduct reports and appeals currently reach the same responder. There is no
+  independent appeal responder; do not promise one until one is named here.
+- Release tags are restricted to the maintainer. Repository and registry access
+  use least privilege, with recovery arrangements documented by the owner.
+
+If additional maintainers join, update review and access arrangements explicitly.

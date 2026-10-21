@@ -27,10 +27,9 @@ protection where available, with an equivalent local/CI scan where unavailable.
 Run untrusted PR code on disposable GitHub-hosted runners with contents:read,
 no secrets and persist-credentials:false. No `pull_request_target`, privileged
 workflow_run, self-hosted runner, or AI bot with write tokens for PR execution.
-External Actions are pinned to full commit SHAs resolved from the official v4 tags
-on 2026-09-17. Review those revisions before activation and preserve immutable pins
-on updates. Set timeouts, bounded
-artifact retention, and inspect workflow changes like production code.
+External Actions are pinned to immutable full commit SHAs. Review each revision
+and its upstream release when updating a pin. Set timeouts, bounded artifact
+retention, and inspect workflow changes like production code.
 
 ## Repository adapters required before activation
 
@@ -127,8 +126,8 @@ are orchestration contracts, not a claim those uncreated repositories passed CI.
 ## Environment and release configuration
 
 Create `private-candidate` and `public-release` environments. Public-release needs
-an independent reviewer, main-only deployment rules and scoped credentials/OIDC
-trust. Verify enforcement on the organization's private-repo plan. Keep repository
+a named release-owner review, main-only deployment rules and scoped credentials/OIDC
+trust. A sole maintainer may perform this review; independent review is welcome. Verify enforcement on the organization's private-repo plan. Keep repository
 variable `OSS_PUBLIC_RELEASE_ENABLED` absent or `false` until launch. Its presence
 is not a substitute for the environment review and SHA-bound release record.
 
@@ -240,22 +239,9 @@ Consequences a reader should not have to rediscover:
 - Both repositories are checked out into subdirectories (`packdb-cli/`,
   `packdb-sdk/`) so the layout the manifest expects actually exists. Jobs set
   `working-directory: packdb-cli`.
-- `GITHUB_TOKEN` is scoped to this repository, so a private `packdb-sdk` needs
-  its own credential. Each job mints a **short-lived GitHub App installation
-  token** with `actions/create-github-app-token`, scoped to `packdb-oss` /
-  `packdb-sdk` alone with `permission-contents: read`. It expires with the job,
-  can write nowhere, and never reaches a shell: the action returns it as a step
-  output and `actions/checkout` consumes it directly with
-  `persist-credentials: false`. The workflows read
-  `secrets.OSS_SDK_APP_CLIENT_ID` and `secrets.OSS_SDK_APP_PRIVATE_KEY` as action
-  inputs, never interpolating either into `run:` script text. Configure both
-  names through the approved secrets runbook in **Actions secrets and
-  Dependabot secrets** for this repository. GitHub supplies only Dependabot
-  secrets to workflows triggered by Dependabot PRs; an Actions-only setup
-  passes human PRs but leaves every Dependabot update unable to mint a token.
-  The App installation must be limited to `packdb-oss/packdb-sdk` with
-  Contents: read. Verify one human PR and one Dependabot PR before requiring
-  the four check contexts on `main`.
+- Public SDK checkout uses the job's `GITHUB_TOKEN` without separate App
+  credentials. Fork compatibility is expected from this change but remains
+  untested.
 - The SDK checkout is pinned to a **reviewed full commit SHA**, `SDK_COMMIT` at
   workflow level, and a step fails the job if what arrived is not that commit.
   A moving branch would let a later SDK change alter a CLI candidate with no

@@ -9,7 +9,7 @@ concurrency:
 env:
   # The reviewed packdb-oss/packdb-sdk commit this repository builds against.
   # Changing it is a CLI decision, made in a CLI pull request.
-  SDK_COMMIT: "cfdebdcaa584e8c3eb75d9b7c873a843a9d5f912"
+  SDK_COMMIT: "543ba67439b172783804b965bc3dafa2f3c46261"
   # The DECLARED Linux runtime floor -- declared, not inherited. Asserted below
   # against the built binary rather than being whatever the runner image shipped.
   GLIBC_BASELINE: "2.35"
@@ -19,7 +19,7 @@ defaults:
 jobs:
   candidate:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     environment: private-candidate
     steps:
@@ -34,19 +34,10 @@ jobs:
           persist-credentials: false
           path: packdb-cli
 
-      # A short-lived, read-only App installation token scoped to ONE
-      # repository. It expires with the job, it cannot write anywhere, and it
-      # never reaches a shell: the action returns it as a step output and
-      # checkout consumes it directly.
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        id: sdk-token
-        with:
-          client-id: ${{ secrets.OSS_SDK_APP_CLIENT_ID }}
-          private-key: ${{ secrets.OSS_SDK_APP_PRIVATE_KEY }}
-          owner: packdb-oss
-          repositories: packdb-sdk
-          permission-contents: read
-
+      # Public SDK checkout uses the job's GITHUB_TOKEN without separate App
+      # credentials. Fork compatibility is expected from this change but
+      # remains untested.
+      #
       # Pinned to a reviewed commit, not a branch. A moving `main` would let a
       # later SDK change alter a CLI candidate with no CLI review, and the
       # binary's dependency closure would differ from the one that was signed
@@ -55,7 +46,6 @@ jobs:
         with:
           repository: packdb-oss/packdb-sdk
           ref: ${{ env.SDK_COMMIT }}
-          token: ${{ steps.sdk-token.outputs.token }}
           fetch-depth: 0
           persist-credentials: false
           path: packdb-sdk
@@ -133,19 +123,10 @@ jobs:
           persist-credentials: false
           path: packdb-cli
 
-      # A short-lived, read-only App installation token scoped to ONE
-      # repository. It expires with the job, it cannot write anywhere, and it
-      # never reaches a shell: the action returns it as a step output and
-      # checkout consumes it directly.
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        id: sdk-token
-        with:
-          client-id: ${{ secrets.OSS_SDK_APP_CLIENT_ID }}
-          private-key: ${{ secrets.OSS_SDK_APP_PRIVATE_KEY }}
-          owner: packdb-oss
-          repositories: packdb-sdk
-          permission-contents: read
-
+      # Public SDK checkout uses the job's GITHUB_TOKEN without separate App
+      # credentials. Fork compatibility is expected from this change but
+      # remains untested.
+      #
       # Pinned to a reviewed commit, not a branch. A moving `main` would let a
       # later SDK change alter a CLI candidate with no CLI review, and the
       # binary's dependency closure would differ from the one that was signed
@@ -154,7 +135,6 @@ jobs:
         with:
           repository: packdb-oss/packdb-sdk
           ref: ${{ env.SDK_COMMIT }}
-          token: ${{ steps.sdk-token.outputs.token }}
           fetch-depth: 0
           persist-credentials: false
           path: packdb-sdk
@@ -193,6 +173,16 @@ jobs:
           # of that bug: a binary left over from an earlier build being shipped.
           test "$BIN" -nt "$STAMP"
           echo "bin=$BIN" >> "$GITHUB_OUTPUT"
+      - name: Generate dependency licenses and attribution
+        run: |
+          set -euo pipefail
+          cargo install --locked --features cli cargo-about@0.9.2
+          cargo about --version
+          cargo about generate --locked --features flight-sql --target "${{ matrix.target }}" \
+            --format json --fail > "$RUNNER_TEMP/license-data.json"
+          python3 scripts/render_notices.py --input "$RUNNER_TEMP/license-data.json" \
+            --output THIRD_PARTY_NOTICES.txt
+          test -s THIRD_PARTY_NOTICES.txt
       - name: Assemble and extract the archive
         id: archive
         run: |
@@ -220,7 +210,7 @@ jobs:
             --edges normal,build > DEPENDENCIES.txt
           mkdir -p "stage/${NAME}"
           cp "${{ steps.build.outputs.bin }}" "stage/${NAME}/"
-          cp LICENSE PROVENANCE.txt DEPENDENCIES.txt "stage/${NAME}/"
+          cp LICENSE PROVENANCE.txt DEPENDENCIES.txt THIRD_PARTY_NOTICES.txt "stage/${NAME}/"
           cp crates/packdb-query-cli/COMPATIBILITY.md "stage/${NAME}/"
           tar -C stage -czf "${NAME}.tar.gz" "${NAME}"
           rm -rf verify && mkdir verify
@@ -254,6 +244,8 @@ jobs:
           set -euo pipefail
           DIR="verify/${{ steps.archive.outputs.name }}"
           CONTRACT="$DIR/COMPATIBILITY.md" scripts/assert-shipped-contract.sh "$DIR/packdb-query"
+          test -s "$DIR/THIRD_PARTY_NOTICES.txt"
+          cmp THIRD_PARTY_NOTICES.txt "$DIR/THIRD_PARTY_NOTICES.txt"
       - name: Checksum
         run: |
           set -euo pipefail
