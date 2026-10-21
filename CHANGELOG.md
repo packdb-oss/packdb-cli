@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.4
+
+- Build against SDK 0.2.4. No changes to the CLI's flags, output or exit codes.
+- Replace the LICENSE files (repository root and `packdb-query-cli`, also
+  copied into every binary archive) with the verbatim Apache License 2.0 text.
+  Earlier releases shipped an altered text: the Trademarks clause (section 6)
+  was missing, sections 7 to 9 were renumbered 6 to 8, the copyright grant
+  wording differed, and section 9 was retitled. The CLI's licensing
+  (Apache-2.0, as declared in `Cargo.toml` and the source headers) is
+  unchanged. Earlier release archives keep their original text; this release
+  supersedes them.
+- Update the locked `rustls-webpki` to 0.103.16 and `webpki-root-certs` to
+  1.0.10, resolving RUSTSEC-2026-0382 and RUSTSEC-2026-0383. The release
+  binaries are built from this lockfile. `--locked` reproduces the reviewed
+  dependency versions (`cargo build --locked`, `cargo install --locked`).
+  Unlocked builds may also resolve patched versions; verify the resolved
+  versions and audit the resulting lockfile.
+
 ## 0.2.3
 
 - Build against SDK 0.2.3, which redacts credentials from diagnostic formatting.
