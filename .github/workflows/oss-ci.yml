@@ -42,19 +42,10 @@ jobs:
           persist-credentials: false
           path: packdb-cli
 
-      # A short-lived, read-only App installation token scoped to ONE
-      # repository. It expires with the job, it cannot write anywhere, and it
-      # never reaches a shell: the action returns it as a step output and
-      # checkout consumes it directly.
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        id: sdk-token
-        with:
-          client-id: ${{ secrets.OSS_SDK_APP_CLIENT_ID }}
-          private-key: ${{ secrets.OSS_SDK_APP_PRIVATE_KEY }}
-          owner: packdb-oss
-          repositories: packdb-sdk
-          permission-contents: read
-
+      # Public SDK checkout uses the job's GITHUB_TOKEN without separate App
+      # credentials. Fork compatibility is expected from this change but
+      # remains untested.
+      #
       # Pinned to a reviewed commit, not a branch. A moving `main` would let a
       # later SDK change alter a CLI candidate with no CLI review, and the
       # binary's dependency closure would differ from the one that was signed
@@ -63,7 +54,6 @@ jobs:
         with:
           repository: packdb-oss/packdb-sdk
           ref: ${{ env.SDK_COMMIT }}
-          token: ${{ steps.sdk-token.outputs.token }}
           fetch-depth: 0
           persist-credentials: false
           path: packdb-sdk

@@ -239,22 +239,9 @@ Consequences a reader should not have to rediscover:
 - Both repositories are checked out into subdirectories (`packdb-cli/`,
   `packdb-sdk/`) so the layout the manifest expects actually exists. Jobs set
   `working-directory: packdb-cli`.
-- `GITHUB_TOKEN` is scoped to this repository, so a private `packdb-sdk` needs
-  its own credential. Each job mints a **short-lived GitHub App installation
-  token** with `actions/create-github-app-token`, scoped to `packdb-oss` /
-  `packdb-sdk` alone with `permission-contents: read`. It expires with the job,
-  can write nowhere, and never reaches a shell: the action returns it as a step
-  output and `actions/checkout` consumes it directly with
-  `persist-credentials: false`. The workflows read
-  `secrets.OSS_SDK_APP_CLIENT_ID` and `secrets.OSS_SDK_APP_PRIVATE_KEY` as action
-  inputs, never interpolating either into `run:` script text. Configure both
-  names through the approved secrets runbook in **Actions secrets and
-  Dependabot secrets** for this repository. GitHub supplies only Dependabot
-  secrets to workflows triggered by Dependabot PRs; an Actions-only setup
-  passes human PRs but leaves every Dependabot update unable to mint a token.
-  The App installation must be limited to `packdb-oss/packdb-sdk` with
-  Contents: read. Verify one human PR and one Dependabot PR before requiring
-  the four check contexts on `main`.
+- Public SDK checkout uses the job's `GITHUB_TOKEN` without separate App
+  credentials. Fork compatibility is expected from this change but remains
+  untested.
 - The SDK checkout is pinned to a **reviewed full commit SHA**, `SDK_COMMIT` at
   workflow level, and a step fails the job if what arrived is not that commit.
   A moving branch would let a later SDK change alter a CLI candidate with no
