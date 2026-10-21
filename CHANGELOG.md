@@ -13,10 +13,10 @@
   supersedes them.
 - Update the locked `rustls-webpki` to 0.103.16 and `webpki-root-certs` to
   1.0.10, resolving RUSTSEC-2026-0382 and RUSTSEC-2026-0383. The release
-  binaries are built from this lockfile. Builds from source get these versions
-  only when they use the lockfile (`cargo build --locked`, or
-  `cargo install --locked`); otherwise update `rustls-webpki` to 0.103.16 or
-  later and `webpki-root-certs` to 1.0.10 or later in the resolving lockfile.
+  binaries are built from this lockfile. `--locked` reproduces the reviewed
+  dependency versions (`cargo build --locked`, `cargo install --locked`).
+  Unlocked builds may also resolve patched versions; verify the resolved
+  versions and audit the resulting lockfile.
 
 ## 0.2.3
 
