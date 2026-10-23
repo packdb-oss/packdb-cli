@@ -6,11 +6,13 @@ GitHub releases and crates.io publication are separate decisions; crates.io is p
 
 ## Order of operations
 
-`packdb-query-cli` depends on `packdb-client` by version. It cannot be published,
-and cannot resolve from the registry, until `packdb-otel` and then `packdb-client`
-are on crates.io. Binary releases can follow either way, because a binary archive
-is built from source and does not need the registry — but a crates.io release of
-this package does. Do not attempt them in the other order.
+`packdb-cli` depends on `packdb-client` by version. It cannot be published, and
+cannot resolve from the registry, until `packdb-otel` and then `packdb-client` are
+on crates.io. Do not attempt them in the other order.
+
+This repository releases source only. The `packdb` binary that embeds the library
+is built and released with the server; `packdb-query` binary archives of 0.2.0 to
+0.2.4 stay on their GitHub Releases unchanged.
 
 ## Private candidates
 
@@ -18,10 +20,10 @@ this package does. Do not attempt them in the other order.
 2. Run full checks, coverage, compatibility, and security gates on the exact commit.
 3. Inspect `cargo package --list`. The package must include its README, LICENSE and
    COMPATIBILITY.md, and exclude private data and internal-only source.
-4. Dispatch `oss-candidate`. It builds both native targets from one shared source
-   state, extracts every archive and exercises the shipped binary — help, version,
-   both transport flags and every documented exit code — and holds the Linux binary
-   to the declared glibc floor by reading its required `GLIBC_*` symbols.
+4. Dispatch `oss-candidate`. It reruns every gate on the exact commit, including
+   the test harness's process-level contract tests, and records the source archive,
+   package and source inventories, dependency inventory, checksums and the SDK
+   revision it was built against.
 5. Review the source archive, dependency inventory, checksums and release record. A
    candidate does not authorize a tag, GitHub Release, visibility change, or
    registry upload.
@@ -38,16 +40,8 @@ while `OSS_PUBLIC_RELEASE_ENABLED` is not `true`, and its adapter refuses public
 until the launch implementation is reviewed. Do not use `pull_request_target` or
 `workflow_run` for publication.
 
-Binary archives attach to a GitHub Release. Publish only archives a candidate run
-produced and verified; never a locally built one. Each archive carries its
-provenance, dependency inventory, licence and the compatibility contract, and its
-checksum is published alongside it.
-
-Binary archives also carry THIRD_PARTY_NOTICES.txt. The candidate generates it
-from the locked, target-filtered flight-sql graph with cargo-about 0.9.2, then
-preserves original dependency license, copyright and NOTICE files (including
-vendored legal files). Missing license coverage fails qualification. The extracted
-archive must contain the generated text byte for byte.
+Attach to a GitHub Release only the source archive and records a candidate run
+produced and verified; never a locally built archive.
 
 Before public visibility, review reachable history, Actions artifacts and private
 release attachments; verify security and conduct contacts; record the release-owner review;

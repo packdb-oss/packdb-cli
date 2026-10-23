@@ -1,9 +1,9 @@
 [package]
-name = "packdb-query-cli"
+name = "packdb-cli"
 version = "0.2.4"
 edition = "2024"
 rust-version = "1.94.1"
-description = "Command-line SQL client for PackDB, installed as the `packdb-query` binary."
+description = "The command library behind the PackDB `packdb` command: queries and operator commands against a running server."
 license = "Apache-2.0"
 readme = "README.md"
 keywords = ["packdb", "cli", "sql", "query"]
@@ -12,22 +12,23 @@ repository = "https://github.com/packdb-oss/packdb-cli"
 # a separate reviewed allowlist change and release authorization.
 publish = false
 
-[[bin]]
-name = "packdb-query"
-path = "src/main.rs"
-
 [dependencies]
 # Enable the `sql` feature so the SQL client (including Arrow result
 # formatting) is compiled in. Flight SQL transport is opt-in via the
-# flight-sql feature on this app, which forwards to packdb-client.
+# flight-sql feature on this crate, which forwards to packdb-client.
 packdb-client = { version = "0.2.4", features = ["sql"] }
-clap = { version = "4.5", features = ["derive", "env"] }
-tokio = { version = "1.49", features = ["full"] }
+clap = { version = "4.5", features = ["derive"] }
+http = "1"
+serde_json = "1"
+
+[dev-dependencies]
+tokio = { version = "1.49", features = ["macros", "rt"] }
+wiremock = "0.6"
 
 [features]
 default = []
-# Enables Flight SQL transport and exposes the --flight-endpoint / --http-only
-# flags. Without this feature the CLI only supports HTTP.
+# Enables the Flight SQL transport. Without it `--transport flight-sql` is a
+# configuration error and `auto` uses HTTP.
 flight-sql = ["packdb-client/flight-sql"]
 
 # These crates are on the SDK/CLI extraction path, so their public API is
