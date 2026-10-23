@@ -11,11 +11,11 @@ readonly CARGO_LLVM_COV_VERSION="0.9.1"
 readonly CARGO_AUDIT_VERSION="0.22.2"
 readonly CARGO_DENY_VERSION="0.20.2"
 readonly GITLEAKS_VERSION="v8.30.1"
-readonly PACKAGES=(packdb-query-cli)
+readonly PACKAGES=(packdb-cli)
 # The contract ships INSIDE the crate, not at the repository root: the copy a
 # consumer receives is then the copy this repository tests, and there is no
 # second one free to drift.
-readonly CONTRACT="crates/packdb-query-cli/COMPATIBILITY.md"
+readonly CONTRACT="crates/packdb-cli/COMPATIBILITY.md"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -77,7 +77,7 @@ install_cargo_tool() {
 
 # The one structural difference from the SDK adapter.
 #
-# `packdb-query-cli` depends on `packdb-client` BY VERSION. Until that crate is
+# `packdb-cli` depends on `packdb-client` BY VERSION. Until that crate is
 # published there is no registry to resolve it from, so the workspace patches it
 # to a sibling checkout. EVERY gate here resolves dependencies -- clippy, the
 # test matrix, llvm-cov, cargo-deny's metadata read -- so every gate needs the
@@ -164,9 +164,9 @@ PY
     for package in "${PACKAGES[@]}"; do
         listed="$(cargo package --list --locked --allow-dirty -p "$package" 2>/dev/null)" ||
             die "cargo package --list failed for $package"
-        # A binary crate, so src/main.rs rather than src/lib.rs -- and the
-        # contract must travel inside the archive, not merely exist in the repo.
-        for required in Cargo.toml README.md LICENSE COMPATIBILITY.md src/main.rs; do
+        # A library crate -- and the contract must travel inside the archive,
+        # not merely exist in the repo.
+        for required in Cargo.toml README.md LICENSE COMPATIBILITY.md src/lib.rs; do
             grep -qx "$required" <<<"$listed" || die "$package package is missing $required"
         done
         if grep -E '(^|/)(target|dist)/|\.profraw$' <<<"$listed"; then
@@ -175,14 +175,15 @@ PY
     done
 }
 
-# No `--doc` run: this workspace is a single BINARY crate, and
-# `cargo test --doc` exits 101 with "no library targets found". The SDK
-# adapter has that line because its members are libraries. Copying it here
-# made the gate fail on its first real run rather than on a real defect.
+# The workspace has one library, `packdb-cli`, and one test-only executable,
+# `packdb-cli-test-harness`, whose tests run the library as a process to check
+# stdout, stderr and exit codes. `--all-targets` runs both; `--doc` covers the
+# library's documentation examples.
 feature_matrix() {
     local toolchain="$1"
     cargo "+$toolchain" test --locked --workspace --all-targets
     cargo "+$toolchain" test --locked --workspace --all-targets --features flight-sql
+    cargo "+$toolchain" test --locked --workspace --doc --all-features
 }
 
 cmd_checks() {
@@ -195,7 +196,6 @@ cmd_checks() {
     check_action_pins
     python3 scripts/check_action_pins.py --self-test
     python3 scripts/check_source_headers.py
-    python3 scripts/render_notices.py --self-test
     require_sdk_sibling
     python3 scripts/export_clean.py
     python3 scripts/coverage_gate.py --self-test
@@ -229,20 +229,11 @@ cmd_compatibility() {
     check_gate_input compatibility
     scope >/dev/null
     require_sdk_sibling
+    # The command contract is checked through the test harness: its tests run
+    # the library as a process and assert stdout, stderr and exit codes. This
+    # repository ships no executable; the `packdb` binary is assembled with the
+    # server.
     feature_matrix "$MSRV"
-    cargo build --locked --release --features flight-sql
-    # Not a hardcoded `target/`: CARGO_TARGET_DIR is commonly set, and the
-    # binary is then somewhere else entirely. Asking cargo where it put things
-    # is the only answer that is right in both cases.
-    local target_dir
-    target_dir="$(cargo metadata --format-version 1 --no-deps |
-        python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
-    # Same script the candidate workflow runs against the extracted archive,
-    # so the gate and the shipped artifact cannot assert different contracts.
-    # `env`, not a shell assignment prefix: CONTRACT is `readonly` here, and
-    # bash refuses to shadow a readonly name even for one command.
-    env CONTRACT="$CONTRACT" scripts/assert-shipped-contract.sh \
-        "$target_dir/release/packdb-query"
 }
 
 cmd_security() {
@@ -308,7 +299,7 @@ PY
             >"dist/package-inventories/${package}.txt"
     done
     git ls-files >dist/source-inventory.txt
-    # The sibling SDK is an input to this binary. Recording its commit and
+    # The sibling SDK is an input to this library. Recording its commit and
     # inventory digest is what lets a reader confirm afterwards which SDK a
     # candidate was built against, rather than inferring it from timing.
     python3 - "$ROOT/Cargo.lock" >dist/dependencies.json <<'PY'
@@ -319,7 +310,7 @@ print(json.dumps([
     for p in lock.get("package", [])
 ], indent=2))
 PY
-    # The SDK checkout the binary was built against, by commit and by git tree
+    # The SDK checkout the library was built against, by commit and by git tree
     # id -- a content digest of exactly those sources. No fallback: a candidate
     # that cannot name its SDK must not be produced.
     local sdk_sha sdk_tree
@@ -336,7 +327,7 @@ import json, subprocess, sys
 sha, version, run_id, attempt, sdk_sha, sdk_tree = sys.argv[1:7]
 print(json.dumps({
     "repository": "packdb-cli",
-    "packages": ["packdb-query-cli"],
+    "packages": ["packdb-cli"],
     "version": version,
     "source_sha": sha,
     "sdk_source_sha": sdk_sha,

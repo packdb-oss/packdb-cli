@@ -15,7 +15,7 @@ permissions:
 env:
   # The reviewed packdb-oss/packdb-sdk commit this repository builds against.
   # Changing it is a CLI decision, made in a CLI pull request.
-  SDK_COMMIT: "543ba67439b172783804b965bc3dafa2f3c46261"
+  SDK_COMMIT: "80eb643aea800f9521540046ba6a4e0ebddfe5f0"
 concurrency:
   group: oss-publication
   cancel-in-progress: false
@@ -50,7 +50,7 @@ jobs:
       #
       # Pinned to a reviewed commit, not a branch. A moving `main` would let a
       # later SDK change alter a CLI candidate with no CLI review, and the
-      # binary's dependency closure would differ from the one that was signed
+      # CLI's dependency closure would differ from the one that was signed
       # off. Bump this deliberately, in a PR, alongside a regenerated lockfile.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

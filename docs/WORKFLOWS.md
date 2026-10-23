@@ -13,7 +13,7 @@ These templates have no effect from this documentation directory.
 | `oss-ci / coverage` | Same | Per-file 80% gate with missing-data failure, declared features, canonical evaluator self-test and exception verification |
 | `oss-ci / compatibility` | Same | Parser corpus; SDK protocol/feature tests; CLI process/HTTP/Flight SQL tests; server three-signal ingest/query/restart and auth/config |
 | `oss-security / audit` | PR, main push, weekly | Fresh RustSec data, approved dependency licenses, secret scan of change/full export before release; exceptions have owner, scope and expiry |
-| `oss-candidate / candidate` | Manual dispatch on main | Exact SHA, release checks, package/source inventories and target binaries with checksums |
+| `oss-candidate / candidate` | Manual dispatch on main | Exact SHA, release checks, source archive, package/source inventories and checksums |
 | `oss-publish / publish` | Manual dispatch on main, disabled by default | Protected environment, approved commit/tag, existing candidate verification, registry and GitHub publication in dependency order |
 
 Require all stable job names in branch rules; do not use path filters that omit
@@ -226,7 +226,7 @@ queue is enabled, but ordinary protected PR merges remain sufficient.
 
 ## This repository's one departure: the sibling SDK checkout
 
-`packdb-query-cli` depends on `packdb-client` **by version**. Until that crate
+`packdb-cli` depends on `packdb-client` **by version**. Until that crate
 is published there is no registry to resolve it from, so `Cargo.toml` patches it
 to a sibling `packdb-sdk` checkout. Every gate above resolves dependencies —
 clippy, the test matrix, `cargo llvm-cov`, and `cargo deny`'s metadata read — so
@@ -245,7 +245,7 @@ Consequences a reader should not have to rediscover:
 - The SDK checkout is pinned to a **reviewed full commit SHA**, `SDK_COMMIT` at
   workflow level, and a step fails the job if what arrived is not that commit.
   A moving branch would let a later SDK change alter a CLI candidate with no
-  CLI review, and the binary's dependency closure would differ from the one
+  CLI review, and the CLI's dependency closure would differ from the one
   that was signed off. Bump it deliberately in a pull request and review
   the lockfile. Regenerate it if the SDK dependency graph changed; a
   metadata-only SDK update can leave the reviewed lockfile byte-identical.

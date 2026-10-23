@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+Breaking. `packdb-query` is retired in favour of `packdb`, whose command library
+this repository now provides; its 0.2.x archives are unchanged. See
+`crates/packdb-cli/COMPATIBILITY.md` for the contract and the migration table.
+
+- The package is `packdb-cli`, a library with no executable. `packdb query sql`
+  replaces `packdb-query`; the `packdb` binary is assembled with the server.
+- Credentials never come from argument values: `--api-key-file`, `--token-file`
+  and `--basic-auth-file`, or `PACKDB_API_KEY`, `PACKDB_TOKEN`, `PACKDB_BASIC_AUTH`
+  and their `_FILE` forms. Two credentials are refused instead of the first
+  winning silently.
+- `--endpoint` / `PACKDB_ENDPOINT` replace `--url` / `PACKDB_URL`;
+  `PACKDB_FLIGHT_ENDPOINT` replaces `PACKDB_FLIGHT_URL`; `--transport
+  auto|http|flight-sql` replaces `--http-only`, and an explicit transport never
+  falls back.
+- Results report completeness. JSON output is one envelope with `completeness`,
+  `partial_causes`, `warnings`, `transport` and `data`; table and CSV output warn
+  on stderr. An answer whose completeness is partial or unknown exits `3`.
+- Exit codes: `4` not authenticated, `5` permission denied, `6` unreachable, `7`
+  server or protocol failure.
+- Requires `packdb-client` with the transport and error changes of
+  packdb-oss/packdb-sdk#34.
+
 ## 0.2.4
 
 - Build against SDK 0.2.4. No changes to the CLI's flags, output or exit codes.

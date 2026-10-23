@@ -9,10 +9,7 @@ concurrency:
 env:
   # The reviewed packdb-oss/packdb-sdk commit this repository builds against.
   # Changing it is a CLI decision, made in a CLI pull request.
-  SDK_COMMIT: "543ba67439b172783804b965bc3dafa2f3c46261"
-  # The DECLARED Linux runtime floor -- declared, not inherited. Asserted below
-  # against the built binary rather than being whatever the runner image shipped.
-  GLIBC_BASELINE: "2.35"
+  SDK_COMMIT: "80eb643aea800f9521540046ba6a4e0ebddfe5f0"
 defaults:
   run:
     working-directory: packdb-cli
@@ -40,7 +37,7 @@ jobs:
       #
       # Pinned to a reviewed commit, not a branch. A moving `main` would let a
       # later SDK change alter a CLI candidate with no CLI review, and the
-      # binary's dependency closure would differ from the one that was signed
+      # CLI's dependency closure would differ from the one that was signed
       # off. Bump this deliberately, in a PR, alongside a regenerated lockfile.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,180 +82,5 @@ jobs:
         with:
           name: candidate-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: packdb-cli/dist/
-          if-no-files-found: error
-          retention-days: 3
-
-  # Binaries build on a runner of their own architecture. Nothing is
-  # cross-compiled: a cross-built binary's runtime floor is a property of the
-  # sysroot it linked against, which is exactly what the glibc assertion below
-  # exists to establish independently.
-  binaries:
-    needs: candidate
-    name: ${{ matrix.target }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    environment: private-candidate
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # ubuntu-22.04 ships glibc 2.35, so the runner's own glibc IS the
-          # declared floor. That keeps the symbol check an assertion rather
-          # than a tautology.
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-22.04
-            os: linux
-          - target: aarch64-apple-darwin
-            runner: macos-15
-            os: macos
-    steps:
-      # This repository resolves packdb-client and packdb-otel from a SIBLING
-      # packdb-sdk checkout, because the CLI depends on them by version and they
-      # are not published yet. Every gate here resolves dependencies, so every
-      # gate needs it. Both repositories are checked out into subdirectories so
-      # the sibling layout the manifest expects actually exists.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          path: packdb-cli
-
-      # Public SDK checkout uses the job's GITHUB_TOKEN without separate App
-      # credentials. Fork compatibility is expected from this change but
-      # remains untested.
-      #
-      # Pinned to a reviewed commit, not a branch. A moving `main` would let a
-      # later SDK change alter a CLI candidate with no CLI review, and the
-      # binary's dependency closure would differ from the one that was signed
-      # off. Bump this deliberately, in a PR, alongside a regenerated lockfile.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: packdb-oss/packdb-sdk
-          ref: ${{ env.SDK_COMMIT }}
-          fetch-depth: 0
-          persist-credentials: false
-          path: packdb-sdk
-
-      - name: Confirm the SDK checkout is the reviewed commit
-        working-directory: packdb-sdk
-        run: |
-          set -euo pipefail
-          actual="$(git rev-parse HEAD)"
-          echo "reviewed: ${SDK_COMMIT}"
-          echo "actual:   ${actual}"
-          if [ "$actual" != "$SDK_COMMIT" ]; then
-            echo "::error title=SDK checkout is not the reviewed commit::refusing to build against an unreviewed SDK"
-            exit 1
-          fi
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: 3.12.10
-      - name: Build from a clean target directory
-        id: build
-        env:
-          CARGO_TERM_COLOR: always
-          CARGO_INCREMENTAL: 0
-        run: |
-          set -euo pipefail
-          export CARGO_TARGET_DIR="${{ runner.temp }}/candidate-target"
-          rm -rf "$CARGO_TARGET_DIR" && mkdir -p "$CARGO_TARGET_DIR"
-          STAMP="$CARGO_TARGET_DIR/.build-start"; touch "$STAMP"
-          rustup show active-toolchain
-          rustup target add "${{ matrix.target }}"
-          cargo build --release --locked --features flight-sql --target "${{ matrix.target }}"
-          BIN="$CARGO_TARGET_DIR/${{ matrix.target }}/release/packdb-query"
-          test -f "$BIN"
-          # set -e already aborts a failed build. This catches the other shape
-          # of that bug: a binary left over from an earlier build being shipped.
-          test "$BIN" -nt "$STAMP"
-          echo "bin=$BIN" >> "$GITHUB_OUTPUT"
-      - name: Generate dependency licenses and attribution
-        run: |
-          set -euo pipefail
-          cargo install --locked --features cli cargo-about@0.9.2
-          cargo about --version
-          cargo about generate --locked --features flight-sql --target "${{ matrix.target }}" \
-            --format json --fail > "$RUNNER_TEMP/license-data.json"
-          python3 scripts/render_notices.py --input "$RUNNER_TEMP/license-data.json" \
-            --output THIRD_PARTY_NOTICES.txt
-          test -s THIRD_PARTY_NOTICES.txt
-      - name: Assemble and extract the archive
-        id: archive
-        run: |
-          set -euo pipefail
-          VERSION="$(python3 -c 'import sys,tomllib; print(tomllib.load(open(sys.argv[1],"rb"))["package"]["version"])' crates/packdb-query-cli/Cargo.toml)"
-          NAME="packdb-query-${VERSION}-${{ matrix.target }}"
-          SDK_SHA="$(git -C ../packdb-sdk rev-parse HEAD)"
-          {
-            echo "binary: packdb-query"
-            echo "version: ${VERSION}"
-            echo "target: ${{ matrix.target }}"
-            echo "features: flight-sql"
-            echo "source_repo: ${{ github.repository }}"
-            echo "source_commit: ${{ github.sha }}"
-            echo "sdk_source_commit: ${SDK_SHA}"
-            echo "workflow: ${{ github.workflow_ref }}"
-            echo "run_id: ${{ github.run_id }}"
-            echo "run_attempt: ${{ github.run_attempt }}"
-            echo "runner: ${{ matrix.runner }}"
-            echo "toolchain: $(rustc --version)"
-            echo "built_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } > PROVENANCE.txt
-          cat PROVENANCE.txt
-          cargo tree --locked --features flight-sql --target "${{ matrix.target }}" \
-            --edges normal,build > DEPENDENCIES.txt
-          mkdir -p "stage/${NAME}"
-          cp "${{ steps.build.outputs.bin }}" "stage/${NAME}/"
-          cp LICENSE PROVENANCE.txt DEPENDENCIES.txt THIRD_PARTY_NOTICES.txt "stage/${NAME}/"
-          cp crates/packdb-query-cli/COMPATIBILITY.md "stage/${NAME}/"
-          tar -C stage -czf "${NAME}.tar.gz" "${NAME}"
-          rm -rf verify && mkdir verify
-          tar -C verify -xzf "${NAME}.tar.gz"
-          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
-      - name: Enforce the declared glibc baseline
-        if: matrix.os == 'linux'
-        run: |
-          set -euo pipefail
-          BIN="verify/${{ steps.archive.outputs.name }}/packdb-query"
-          # sort -V is required, not cosmetic: lexically "2.4" sorts above
-          # "2.35", which would invert the comparison.
-          mapfile -t FOUND < <(objdump -T "$BIN" | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sort -u -V)
-          if [ "${#FOUND[@]}" -eq 0 ]; then
-            echo "::error title=glibc check examined nothing::no GLIBC_* symbols in $BIN"
-            echo "A dynamically linked glibc binary always imports some. Finding none"
-            echo "means this check is not looking at what it thinks it is."
-            exit 1
-          fi
-          HIGHEST="${FOUND[-1]#GLIBC_}"
-          echo "declared baseline: ${GLIBC_BASELINE}"
-          echo "highest required:  ${HIGHEST}"
-          printf '  %s\n' "${FOUND[@]}"
-          if [ "$(printf '%s\n%s\n' "$GLIBC_BASELINE" "$HIGHEST" | sort -V | tail -1)" != "$GLIBC_BASELINE" ]; then
-            echo "::error title=glibc baseline exceeded::requires GLIBC_${HIGHEST}, declared floor is ${GLIBC_BASELINE}"
-            exit 1
-          fi
-          echo "OK: nothing above GLIBC_${GLIBC_BASELINE}"
-      - name: Assert the shipped contract against the extracted binary
-        run: |
-          set -euo pipefail
-          DIR="verify/${{ steps.archive.outputs.name }}"
-          CONTRACT="$DIR/COMPATIBILITY.md" scripts/assert-shipped-contract.sh "$DIR/packdb-query"
-          test -s "$DIR/THIRD_PARTY_NOTICES.txt"
-          cmp THIRD_PARTY_NOTICES.txt "$DIR/THIRD_PARTY_NOTICES.txt"
-      - name: Checksum
-        run: |
-          set -euo pipefail
-          NAME="${{ steps.archive.outputs.name }}"
-          sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256"
-          sha256sum -c "${NAME}.tar.gz.sha256" || shasum -a 256 -c "${NAME}.tar.gz.sha256"
-          cat "${NAME}.tar.gz.sha256"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: binary-${{ matrix.target }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            packdb-cli/${{ steps.archive.outputs.name }}.tar.gz
-            packdb-cli/${{ steps.archive.outputs.name }}.tar.gz.sha256
-            packdb-cli/PROVENANCE.txt
           if-no-files-found: error
           retention-days: 3

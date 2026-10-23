@@ -1,6 +1,7 @@
 # Provenance
 
-This repository is the **canonical source** of `packdb-query-cli` (the `packdb-query` binary). Changes are authored,
+This repository is the **canonical source** of `packdb-cli`, the command library
+behind `packdb` (formerly `packdb-query-cli`, the retired `packdb-query` binary). Changes are authored,
 reviewed and released here.
 
 It began as an export from the private PackDB monorepo. The last export was
