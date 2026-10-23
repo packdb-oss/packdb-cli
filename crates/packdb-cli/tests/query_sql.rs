@@ -169,7 +169,8 @@ async fn a_json_failure_prints_the_envelope_with_its_error() {
     let envelope: Value = serde_json::from_str(&outcome.stdout).expect("one JSON object");
     assert_eq!(envelope["error"]["kind"], "permission_denied");
     assert_eq!(envelope["completeness"], Value::Null);
-    assert_eq!(envelope["transport"]["used"], Value::Null);
+    assert_eq!(envelope["transport"]["used"], "http");
+    assert_eq!(envelope["transport"]["fallback_reason"], Value::Null);
     assert_eq!(envelope["data"], Value::Null);
 }
 

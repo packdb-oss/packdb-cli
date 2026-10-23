@@ -17,7 +17,6 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
 use std::process::{Command, Output, Stdio};
-use std::time::Duration;
 
 use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path};
@@ -233,15 +232,31 @@ async fn conflicting_credentials_exit_2_without_contacting_the_server() {
 
 /// A reader that goes away before the result is written: the write fails with
 /// a broken pipe, and the command reports it as exit 8 instead of succeeding.
+///
+/// The server holds its reply until the test has closed the harness's stdout,
+/// so the pipe is closed before the harness can write, whatever the scheduling.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_closed_stdout_exits_8() {
-    let server = sql_server(
-        ResponseTemplate::new(200)
-            .set_body_json(json!({"rows": [{"count": 7}]}))
-            .set_delay(Duration::from_millis(500)),
-    )
-    .await;
-    let uri = server.uri();
+    use std::io::{Read, Write};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let endpoint = format!("http://{}", listener.local_addr().expect("addr"));
+    let (closed, wait_for_closed) = std::sync::mpsc::channel::<()>();
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().expect("accept the query");
+        let mut request = [0u8; 4096];
+        let _ = socket.read(&mut request).expect("read the query");
+        wait_for_closed
+            .recv()
+            .expect("the test closes stdout first");
+        let body = r#"{"rows":[{"count":7}]}"#;
+        write!(
+            socket,
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .expect("answer the query");
+    });
     let status = tokio::task::spawn_blocking(move || {
         let mut command = Command::new(HARNESS);
         for variable in VARIABLES {
@@ -255,16 +270,18 @@ async fn a_closed_stdout_exits_8() {
                 "--transport",
                 "http",
                 "--endpoint",
-                &uri,
+                &endpoint,
             ])
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn the harness");
         drop(child.stdout.take());
+        closed.send(()).expect("release the reply");
         child.wait().expect("wait for the harness")
     })
     .await
     .expect("join");
+    server.join().expect("server thread");
     assert_eq!(status.code(), Some(8));
 }

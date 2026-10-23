@@ -120,7 +120,7 @@ not reported by any cause.
 | `5` | permission denied (`403`, gRPC `PermissionDenied`) |
 | `6` | the server could not be reached |
 | `7` | server or protocol failure (any other non-2xx, including every `5xx`) |
-| `8` | the result could not be written to stdout or stderr (a full disk, a closed pipe) |
+| `8` | output could not be delivered: writing or flushing stdout or stderr failed (a full disk, a closed pipe), including warnings and error messages |
 
 When several apply, the first match in the order `8, 2, 4, 5, 6, 7, 1, 3` wins. A
 result that was not fully written never exits `0` or `3`. Over

@@ -35,7 +35,8 @@ pub enum Exit {
     Unreachable,
     /// 7: a server or protocol failure.
     ServerFailure,
-    /// 8: the result could not be written to stdout or stderr.
+    /// 8: output could not be delivered: writing or flushing stdout or stderr
+    /// failed, including warnings and error messages.
     OutputFailed,
 }
 
