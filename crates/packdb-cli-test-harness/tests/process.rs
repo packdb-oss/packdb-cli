@@ -16,7 +16,8 @@
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path};
@@ -228,4 +229,42 @@ async fn conflicting_credentials_exit_2_without_contacting_the_server() {
     let stderr = text(&output.stderr);
     assert!(stderr.contains("conflicting credentials"), "{stderr}");
     assert!(!stderr.contains("secret-"), "{stderr}");
+}
+
+/// A reader that goes away before the result is written: the write fails with
+/// a broken pipe, and the command reports it as exit 8 instead of succeeding.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_closed_stdout_exits_8() {
+    let server = sql_server(
+        ResponseTemplate::new(200)
+            .set_body_json(json!({"rows": [{"count": 7}]}))
+            .set_delay(Duration::from_millis(500)),
+    )
+    .await;
+    let uri = server.uri();
+    let status = tokio::task::spawn_blocking(move || {
+        let mut command = Command::new(HARNESS);
+        for variable in VARIABLES {
+            command.env_remove(variable);
+        }
+        let mut child = command
+            .args([
+                "query",
+                "sql",
+                "SELECT count",
+                "--transport",
+                "http",
+                "--endpoint",
+                &uri,
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn the harness");
+        drop(child.stdout.take());
+        child.wait().expect("wait for the harness")
+    })
+    .await
+    .expect("join");
+    assert_eq!(status.code(), Some(8));
 }

@@ -59,7 +59,8 @@ server. `--help` and `--version` exit `0`.
   unreachable, or a timed-out connect. Authentication, permission, TLS and query
   errors, and any failure after the query may have been sent, are reported, not
   retried.
-- A fallback is reported: as a warning on stderr and in JSON `transport`.
+- A fallback is reported, as a warning on stderr and in JSON `transport`, whether
+  the query then succeeds or fails.
 - `flight-sql` needs a Flight endpoint and a build with the `flight-sql` feature;
   otherwise it exits `2`.
 
@@ -85,7 +86,8 @@ server. `--help` and `--version` exit `0`.
   ```
 
   On a failure after the request is sent, `error` holds `kind` and `message`,
-  `data` and `completeness` are `null`, and the message is also on stderr.
+  `data` and `completeness` are `null`, `transport` names the transport that failed
+  and any fallback, and the message is also on stderr.
 - `data.rows` holds the rows as `packdb-client` returns them: decoded from the HTTP
   JSON response, or converted from Flight SQL record batches. It is not the raw wire
   payload.
@@ -118,8 +120,10 @@ not reported by any cause.
 | `5` | permission denied (`403`, gRPC `PermissionDenied`) |
 | `6` | the server could not be reached |
 | `7` | server or protocol failure (any other non-2xx, including every `5xx`) |
+| `8` | the result could not be written to stdout or stderr (a full disk, a closed pipe) |
 
-When several apply, the first match in the order `2, 4, 5, 6, 7, 1, 3` wins. Over
+When several apply, the first match in the order `8, 2, 4, 5, 6, 7, 1, 3` wins. A
+result that was not fully written never exits `0` or `3`. Over
 HTTP a `400` whose body is the server's query or parse rejection (`Query error: ...`
 or `Parse error: ...`) is `1`; over Flight SQL, `InvalidArgument` is `1`.
 
@@ -156,10 +160,11 @@ or `Parse error: ...`) is `1`; over Flight SQL, `InvalidArgument` is `1`.
   redaction and the JSON envelope.
 - `crates/packdb-cli/tests/query_sql.rs`: `query sql` through `run()` against a mock
   server, covering each exit code, partial causes in JSON, table and CSV, credentials
-  sent but never printed, and conflicts sending nothing.
+  sent but never printed, conflicts sending nothing, failing writers (exit `8`), and
+  the fallback history on a failure after fallback.
 - `crates/packdb-cli-test-harness/tests/process.rs`: the same contract as a process
   sees it, covering help, the refused secret argument, stdout/stderr separation,
-  exit codes, credential files and conflicts.
+  exit codes, credential files, conflicts and a closed stdout (exit `8`).
 - `packdb-client`'s own tests cover the transport fallback rules and error
   classification.
 

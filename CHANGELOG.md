@@ -20,7 +20,7 @@ this repository now provides; its 0.2.x archives are unchanged. See
   `partial_causes`, `warnings`, `transport` and `data`; table and CSV output warn
   on stderr. An answer whose completeness is partial or unknown exits `3`.
 - Exit codes: `4` not authenticated, `5` permission denied, `6` unreachable, `7`
-  server or protocol failure.
+  server or protocol failure, `8` the result could not be written.
 - Requires `packdb-client` with the transport and error changes of
   packdb-oss/packdb-sdk#34.
 

@@ -251,3 +251,133 @@ async fn explicit_flight_sql_without_an_endpoint_is_a_usage_error() {
     assert_eq!(exit, Exit::Usage);
     assert!(stdout.is_empty());
 }
+
+/// A writer that fails like a full disk or a closed pipe.
+struct FailingWriter;
+
+impl std::io::Write for FailingWriter {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "the reader went away",
+        ))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn sql_command(endpoint: &str) -> Command {
+    Command::Query {
+        language: QueryCommand::Sql(SqlArgs {
+            sql: "SELECT count".into(),
+            connection: ConnectionArgs {
+                endpoint: Some(endpoint.into()),
+                ..ConnectionArgs::default()
+            },
+            transport: TransportChoice::Http,
+            format: QueryFormat::Csv,
+        }),
+    }
+}
+
+#[tokio::test]
+async fn a_result_that_cannot_be_written_to_stdout_exits_8_and_says_so() {
+    let server = server(rows()).await;
+    let mut stderr = Vec::new();
+    let exit = run(
+        sql_command(&server.uri()),
+        Io {
+            stdout: &mut FailingWriter,
+            stderr: &mut stderr,
+            env: &Env::default(),
+        },
+    )
+    .await;
+    assert_eq!(exit, Exit::OutputFailed);
+    let stderr = String::from_utf8(stderr).expect("utf-8");
+    assert!(
+        stderr.contains("cannot write the result to stdout"),
+        "{stderr}"
+    );
+}
+
+#[tokio::test]
+async fn warnings_that_cannot_be_written_exit_8_even_when_stdout_succeeds() {
+    let server = server(rows()).await;
+    let mut stdout = Vec::new();
+    let exit = run(
+        sql_command(&server.uri()),
+        Io {
+            stdout: &mut stdout,
+            stderr: &mut FailingWriter,
+            env: &Env::default(),
+        },
+    )
+    .await;
+    assert_eq!(exit, Exit::OutputFailed);
+    assert!(!stdout.is_empty());
+}
+
+#[tokio::test]
+async fn a_usage_error_that_cannot_be_reported_exits_8() {
+    let env = Env::default()
+        .with("PACKDB_API_KEY", "a")
+        .with("PACKDB_TOKEN", "b");
+    let mut stdout = Vec::new();
+    let exit = run(
+        sql_command("http://127.0.0.1:9"),
+        Io {
+            stdout: &mut stdout,
+            stderr: &mut FailingWriter,
+            env: &env,
+        },
+    )
+    .await;
+    assert_eq!(exit, Exit::OutputFailed);
+}
+
+/// When Flight SQL is refused and HTTP then fails, the failure still reports
+/// the transport that failed and why Flight SQL was skipped.
+#[cfg(feature = "flight-sql")]
+#[tokio::test]
+async fn a_failure_after_fallback_reports_the_fallback() {
+    let server = server(ResponseTemplate::new(401).set_body_string("who are you")).await;
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let flight = format!("http://{}", closed.local_addr().expect("addr"));
+    drop(closed);
+    let command = Command::Query {
+        language: QueryCommand::Sql(SqlArgs {
+            sql: "SELECT count".into(),
+            connection: ConnectionArgs {
+                endpoint: Some(server.uri()),
+                flight_endpoint: Some(flight),
+                ..ConnectionArgs::default()
+            },
+            transport: TransportChoice::Auto,
+            format: QueryFormat::Json,
+        }),
+    };
+    let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+    let exit = run(
+        command,
+        Io {
+            stdout: &mut stdout,
+            stderr: &mut stderr,
+            env: &Env::default(),
+        },
+    )
+    .await;
+    assert_eq!(exit, Exit::Unauthenticated);
+    let envelope: Value = serde_json::from_slice(&stdout).expect("one JSON object");
+    assert_eq!(envelope["transport"]["requested"], "auto");
+    assert_eq!(envelope["transport"]["used"], "http");
+    assert!(
+        envelope["transport"]["fallback_reason"].is_string(),
+        "{envelope}"
+    );
+    assert_eq!(envelope["error"]["kind"], "unauthenticated");
+    let stderr = String::from_utf8(stderr).expect("utf-8");
+    assert!(stderr.contains("used HTTP instead"), "{stderr}");
+}

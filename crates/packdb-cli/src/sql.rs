@@ -15,8 +15,11 @@
 //! `packdb query sql`.
 
 use http::{HeaderMap, HeaderValue};
+use std::io::Write;
+
 use packdb_client::{
-    ClientError, OutputFormat, RowsAnswer, SqlClient, SqlClientConfig, SqlTransport, TransportUsed,
+    ClientError, OutputFormat, QueryFailure, RowsAnswer, SqlClient, SqlClientConfig, SqlTransport,
+    TransportUsed,
 };
 use serde_json::{Value, json};
 
@@ -113,8 +116,8 @@ pub(crate) async fn run(args: SqlArgs, io: Io<'_>) -> Exit {
     let connection = match args.connection.resolve(env) {
         Ok(connection) => connection,
         Err(error) => {
-            let _ = writeln!(stderr, "error: {}", error.0);
-            return Exit::Usage;
+            let out = Rendered::error(&error.0);
+            return deliver(stdout, stderr, &out, Exit::Usage);
         }
     };
     let mut headers = HeaderMap::new();
@@ -124,8 +127,8 @@ pub(crate) async fn run(args: SqlArgs, io: Io<'_>) -> Exit {
                 headers.insert("x-scope-orgid", value);
             }
             Err(_) => {
-                let _ = writeln!(stderr, "error: the tenant is not a valid header value");
-                return Exit::Usage;
+                let out = Rendered::error("the tenant is not a valid header value");
+                return deliver(stdout, stderr, &out, Exit::Usage);
             }
         }
     }
@@ -143,11 +146,39 @@ pub(crate) async fn run(args: SqlArgs, io: Io<'_>) -> Exit {
     let mut out = Rendered::default();
     let exit = match result {
         Ok(answer) => render_answer(&args, endpoint, answer, &mut out),
-        Err(error) => render_error(&args, endpoint, &error, &mut out),
+        Err(failure) => render_failure(&args, endpoint, failure, &mut out),
     };
-    let _ = stdout.write_all(out.stdout.as_bytes());
-    let _ = stderr.write_all(out.stderr.as_bytes());
-    exit
+    deliver(stdout, stderr, &out, exit)
+}
+
+/// Write the rendered streams and flush them. A result that cannot be
+/// delivered is a failure of its own, [`Exit::OutputFailed`], reported on
+/// stderr while stderr still works.
+fn deliver(stdout: &mut dyn Write, stderr: &mut dyn Write, out: &Rendered, exit: Exit) -> Exit {
+    let written = stdout
+        .write_all(out.stdout.as_bytes())
+        .and_then(|()| stdout.flush());
+    let reported = stderr
+        .write_all(out.stderr.as_bytes())
+        .and_then(|()| stderr.flush());
+    match (written, reported) {
+        (Ok(()), Ok(())) => exit,
+        (Err(error), Ok(())) => {
+            // Best effort: if this report cannot be written either, the exit
+            // code still says the output failed.
+            let report = writeln!(stderr, "error: cannot write the result to stdout: {error}")
+                .and_then(|()| stderr.flush());
+            drop(report);
+            Exit::OutputFailed
+        }
+        (_, Err(_)) => Exit::OutputFailed,
+    }
+}
+
+fn fallback_warning(reason: &str) -> String {
+    format!(
+        "Flight SQL could not be reached before the query was sent; used HTTP instead ({reason})"
+    )
 }
 
 #[derive(Default)]
@@ -157,6 +188,12 @@ struct Rendered {
 }
 
 impl Rendered {
+    fn error(message: &str) -> Self {
+        let mut out = Rendered::default();
+        Rendered::line(&mut out.stderr, &format!("error: {message}"));
+        out
+    }
+
     fn line(text: &mut String, line: &str) {
         text.push_str(line);
         if !line.ends_with('\n') {
@@ -175,9 +212,7 @@ fn render_answer(args: &SqlArgs, endpoint: String, answer: RowsAnswer, out: &mut
         Completeness::of(&response.partial_causes, SQL_ABSENT_CARRIER_MEANS_COMPLETE);
     let mut warnings = Vec::new();
     if let Some(reason) = &fallback_reason {
-        warnings.push(format!(
-            "Flight SQL could not be reached before the query was sent; answered over HTTP ({reason})"
-        ));
+        warnings.push(fallback_warning(reason));
     }
     if let Some(warning) =
         completeness_warning(completeness, &response.partial_causes, UNKNOWN_REASON)
@@ -224,29 +259,47 @@ fn render_answer(args: &SqlArgs, endpoint: String, answer: RowsAnswer, out: &mut
     }
 }
 
-fn render_error(args: &SqlArgs, endpoint: String, error: &ClientError, out: &mut Rendered) -> Exit {
+fn render_failure(
+    args: &SqlArgs,
+    endpoint: String,
+    failure: QueryFailure,
+    out: &mut Rendered,
+) -> Exit {
+    let QueryFailure {
+        error,
+        transport,
+        fallback_reason,
+    } = failure;
+    let warnings: Vec<String> = fallback_reason
+        .as_deref()
+        .map(fallback_warning)
+        .into_iter()
+        .collect();
     if args.format == QueryFormat::Json {
         let envelope = Envelope {
             command: "query sql",
             endpoint,
             transport: TransportReport {
                 requested: args.transport.as_str(),
-                used: None,
-                fallback_reason: None,
+                used: transport.map(used),
+                fallback_reason,
             },
             completeness: None,
             partial_causes: Vec::new(),
-            warnings: Vec::new(),
+            warnings: warnings.clone(),
             error: Some(ErrorReport {
-                kind: error_kind(error),
+                kind: error_kind(&error),
                 message: error.to_string(),
             }),
             data: Value::Null,
         };
         Rendered::line(&mut out.stdout, &envelope.to_json().to_string());
     }
+    for warning in &warnings {
+        Rendered::line(&mut out.stderr, &format!("warning: {warning}"));
+    }
     Rendered::line(&mut out.stderr, &format!("error: {error}"));
-    Exit::of(error)
+    Exit::of(&error)
 }
 
 #[cfg(test)]

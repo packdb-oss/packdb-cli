@@ -35,6 +35,8 @@ pub enum Exit {
     Unreachable,
     /// 7: a server or protocol failure.
     ServerFailure,
+    /// 8: the result could not be written to stdout or stderr.
+    OutputFailed,
 }
 
 impl Exit {
@@ -49,11 +51,12 @@ impl Exit {
             Exit::PermissionDenied => 5,
             Exit::Unreachable => 6,
             Exit::ServerFailure => 7,
+            Exit::OutputFailed => 8,
         }
     }
 
     /// The status that wins when both apply. Precedence, first match wins:
-    /// 2, 4, 5, 6, 7, 1, 3, then 0.
+    /// 8, 2, 4, 5, 6, 7, 1, 3, then 0.
     pub fn worst(self, other: Exit) -> Exit {
         if self.rank() <= other.rank() {
             self
@@ -64,14 +67,15 @@ impl Exit {
 
     fn rank(self) -> u8 {
         match self {
-            Exit::Usage => 0,
-            Exit::Unauthenticated => 1,
-            Exit::PermissionDenied => 2,
-            Exit::Unreachable => 3,
-            Exit::ServerFailure => 4,
-            Exit::Rejected => 5,
-            Exit::Incomplete => 6,
-            Exit::Success => 7,
+            Exit::OutputFailed => 0,
+            Exit::Usage => 1,
+            Exit::Unauthenticated => 2,
+            Exit::PermissionDenied => 3,
+            Exit::Unreachable => 4,
+            Exit::ServerFailure => 5,
+            Exit::Rejected => 6,
+            Exit::Incomplete => 7,
+            Exit::Success => 8,
         }
     }
 
@@ -92,7 +96,7 @@ impl Exit {
 mod tests {
     use super::*;
 
-    const ALL: [Exit; 8] = [
+    const ALL: [Exit; 9] = [
         Exit::Success,
         Exit::Rejected,
         Exit::Usage,
@@ -101,17 +105,18 @@ mod tests {
         Exit::PermissionDenied,
         Exit::Unreachable,
         Exit::ServerFailure,
+        Exit::OutputFailed,
     ];
 
     #[test]
     fn codes_are_the_documented_ones() {
         let codes: Vec<u8> = ALL.iter().map(|exit| exit.code()).collect();
-        assert_eq!(codes, [0, 1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(codes, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
     }
 
     #[test]
-    fn precedence_is_2_4_5_6_7_1_3_0() {
-        let order = [2, 4, 5, 6, 7, 1, 3, 0];
+    fn precedence_is_8_2_4_5_6_7_1_3_0() {
+        let order = [8, 2, 4, 5, 6, 7, 1, 3, 0];
         for (i, a) in ALL.iter().enumerate() {
             for b in ALL.iter().skip(i) {
                 let expected = order
