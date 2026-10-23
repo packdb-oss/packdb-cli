@@ -14,8 +14,6 @@
 
 //! `packdb query sql`.
 
-use std::io::Write;
-
 use http::{HeaderMap, HeaderValue};
 use packdb_client::{
     ClientError, OutputFormat, RowsAnswer, SqlClient, SqlClientConfig, SqlTransport, TransportUsed,
