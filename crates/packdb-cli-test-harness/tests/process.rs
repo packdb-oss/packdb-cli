@@ -16,6 +16,8 @@
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
+use std::io::ErrorKind;
+use std::net::{TcpListener, TcpStream};
 use std::process::{Command, Output, Stdio};
 
 use serde_json::{Value, json};
@@ -59,6 +61,29 @@ async fn harness(args: &[&str], env: &[(&str, &str)]) -> Output {
     })
     .await
     .expect("join")
+}
+
+/// An endpoint that refuses connections. Its port is the local end of an open
+/// loopback connection: nothing listens on it, and while this is held the
+/// system does not assign the port to another socket bound to port 0, as every
+/// test server here is. The refusal is checked here, not assumed.
+struct Refusing {
+    endpoint: String,
+    _held: (TcpListener, TcpStream, TcpStream),
+}
+
+fn refusing_endpoint() -> Refusing {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let client =
+        TcpStream::connect(listener.local_addr().expect("listener addr")).expect("connect");
+    let (server, _) = listener.accept().expect("accept");
+    let addr = client.local_addr().expect("local addr");
+    let refused = TcpStream::connect(addr).expect_err("nothing listens");
+    assert_eq!(refused.kind(), ErrorKind::ConnectionRefused, "{refused}");
+    Refusing {
+        endpoint: format!("http://{addr}"),
+        _held: (listener, client, server),
+    }
 }
 
 fn text(bytes: &[u8]) -> String {
@@ -155,9 +180,8 @@ async fn each_failure_has_its_exit_code() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_unreachable_server_exits_6() {
-    let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
-    let endpoint = format!("http://{}", closed.local_addr().expect("addr"));
-    drop(closed);
+    let refusing = refusing_endpoint();
+    let endpoint = refusing.endpoint.clone();
     let output = harness(
         &[
             "query",
