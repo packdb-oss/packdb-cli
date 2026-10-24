@@ -80,6 +80,14 @@ pub(crate) struct ErrorReport {
 }
 
 /// The JSON envelope every command prints with `--format json`.
+/// Notices the server attached to a successful answer: the `warnings` and
+/// `infos` lists of a Prometheus or Loki response. Reported as received.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ServerNotices {
+    pub(crate) warnings: Vec<String>,
+    pub(crate) infos: Vec<String>,
+}
+
 pub(crate) struct Envelope {
     pub(crate) command: &'static str,
     pub(crate) endpoint: String,
@@ -87,6 +95,7 @@ pub(crate) struct Envelope {
     pub(crate) completeness: Option<Completeness>,
     pub(crate) partial_causes: Vec<String>,
     pub(crate) warnings: Vec<String>,
+    pub(crate) server: ServerNotices,
     pub(crate) error: Option<ErrorReport>,
     pub(crate) data: Value,
 }
@@ -105,6 +114,8 @@ impl Envelope {
             "completeness": self.completeness.map(Completeness::as_str),
             "partial_causes": self.partial_causes,
             "warnings": self.warnings,
+            "server_warnings": self.server.warnings,
+            "server_infos": self.server.infos,
             "error": self.error.as_ref().map(|error| json!({
                 "kind": error.kind,
                 "message": error.message,
@@ -202,6 +213,7 @@ mod tests {
             completeness: Some(Completeness::Partial),
             partial_causes: vec!["c".into()],
             warnings: vec!["w".into()],
+            server: ServerNotices::default(),
             error: Some(ErrorReport {
                 kind: "protocol",
                 message: "m".into(),

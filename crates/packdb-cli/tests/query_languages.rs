@@ -507,3 +507,110 @@ async fn a_non_hex_trace_id_is_refused_before_any_request() {
     assert_ne!(outcome.exit, Exit::Success);
     assert!(outcome.stderr.starts_with("error: "), "{}", outcome.stderr);
 }
+
+#[tokio::test]
+async fn server_warnings_and_infos_reach_stderr_and_the_envelope() {
+    let server = MockServer::start().await;
+    let mut body = vector();
+    body["warnings"] = json!(["PromQL warning: encountered a mix of histograms"]);
+    body["infos"] = json!(["PromQL info: metric might not be a counter"]);
+    Mock::given(method("GET"))
+        .and(path("/api/v1/query"))
+        .respond_with(ok(body))
+        .mount(&server)
+        .await;
+    for format in [QueryFormat::Json, QueryFormat::Table] {
+        let outcome = execute(
+            query(QueryCommand::Promql(promql(&server.uri(), format))),
+            Env::default(),
+        )
+        .await;
+        assert_eq!(outcome.exit, Exit::Incomplete, "{}", outcome.stderr);
+        assert!(
+            outcome
+                .stderr
+                .contains("warning: server: PromQL warning: encountered a mix of histograms\n"),
+            "{}",
+            outcome.stderr
+        );
+        assert!(
+            outcome
+                .stderr
+                .contains("note: server: PromQL info: metric might not be a counter\n"),
+            "{}",
+            outcome.stderr
+        );
+        if format == QueryFormat::Json {
+            let envelope = outcome.envelope();
+            assert_eq!(
+                envelope["server_warnings"],
+                json!(["PromQL warning: encountered a mix of histograms"])
+            );
+            assert_eq!(
+                envelope["server_infos"],
+                json!(["PromQL info: metric might not be a counter"])
+            );
+            assert_eq!(envelope["completeness"], "unknown");
+        }
+    }
+}
+
+#[tokio::test]
+async fn malformed_answers_exit_7_in_every_format_with_nothing_on_stdout() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/query"))
+        .respond_with(
+            ok(
+                json!({"status": "success", "data": {"resultType": "vector", "result": [
+                    {"metric": {"job": "api"}}
+                ]}}),
+            )
+            .insert_header("x-packdb-partial-causes", "cold_tier_unavailable"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/search"))
+        .respond_with(ok(json!({"traces": [{"traceID": "ab12"}]})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v2/traces/ab12"))
+        .respond_with(ok(json!({"batches": []})))
+        .mount(&server)
+        .await;
+    let mut commands = Vec::new();
+    for format in [QueryFormat::Table, QueryFormat::Csv, QueryFormat::Json] {
+        commands.push((
+            query(QueryCommand::Promql(promql(&server.uri(), format))),
+            format,
+        ));
+        commands.push((
+            query(QueryCommand::Traceql(traceql(&server.uri(), format))),
+            format,
+        ));
+    }
+    commands.push((
+        Command::Trace(trace(&server.uri(), "ab12")),
+        QueryFormat::Json,
+    ));
+    for (command, format) in commands {
+        let outcome = execute(command, Env::default()).await;
+        assert_eq!(outcome.exit, Exit::ServerFailure, "{}", outcome.stderr);
+        assert!(
+            outcome.stderr.contains("error: ") && outcome.stderr.contains("malformed response"),
+            "{}",
+            outcome.stderr
+        );
+        if format == QueryFormat::Json {
+            let envelope = outcome.envelope();
+            assert_eq!(envelope["error"]["kind"], "server_or_protocol");
+            assert!(envelope["completeness"].is_null(), "{envelope}");
+            assert!(envelope["data"].is_null(), "{envelope}");
+            assert_eq!(envelope["server_warnings"], json!([]));
+        } else {
+            assert!(outcome.stdout.is_empty(), "{}", outcome.stdout);
+        }
+    }
+}

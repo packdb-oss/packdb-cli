@@ -16,8 +16,6 @@
 //! `trace`: one request to the server's HTTP query API, reported under the
 //! common output and exit contract.
 
-use std::collections::BTreeMap;
-
 use http::{HeaderMap, HeaderValue};
 use packdb_client::{
     ClientError, ClientResult, LogOptions, OutputFormat, QueryApiClient, QueryApiConfig,
@@ -29,7 +27,8 @@ use crate::Io;
 use crate::connection::{ConnectionArgs, UsageError};
 use crate::exit::{Exit, error_kind};
 use crate::output::{
-    Completeness, Envelope, ErrorReport, QueryFormat, TransportReport, completeness_warning,
+    Completeness, Envelope, ErrorReport, QueryFormat, ServerNotices, TransportReport,
+    completeness_warning,
 };
 use crate::render::{Rendered, deliver};
 
@@ -238,6 +237,15 @@ impl Answer {
             data,
             partial_causes,
         } = response;
+        // A response that is not the shape its API defines is a protocol
+        // failure in every format, never an empty table or a blank cell.
+        let checked = check(self.rows, &data).and_then(|rows| Ok((rows, notices(&data)?)));
+        let (rows, server) = match checked {
+            Ok(checked) => checked,
+            Err(error) => {
+                return render_failure(self.command, self.endpoint, self.format, &error, out);
+            }
+        };
         let completeness = Completeness::of(&partial_causes, self.absent_means_complete);
         let warnings: Vec<String> =
             completeness_warning(completeness, &partial_causes, self.unknown_reason)
@@ -248,6 +256,15 @@ impl Answer {
         } else {
             Exit::Incomplete
         };
+        for warning in &warnings {
+            Rendered::line(&mut out.stderr, &format!("warning: {warning}"));
+        }
+        for warning in &server.warnings {
+            Rendered::line(&mut out.stderr, &format!("warning: server: {warning}"));
+        }
+        for info in &server.infos {
+            Rendered::line(&mut out.stderr, &format!("note: server: {info}"));
+        }
         let rendered = match self.format {
             QueryFormat::Json => Ok(Envelope {
                 command: self.command,
@@ -255,22 +272,16 @@ impl Answer {
                 transport: http_transport(true),
                 completeness: Some(completeness),
                 partial_causes,
-                warnings: warnings.clone(),
+                warnings,
+                server,
                 error: None,
                 data,
             }
             .to_json()
             .to_string()),
-            QueryFormat::Table => {
-                tabulate(self.rows, &data).and_then(|rows| OutputFormat::Table.render(&rows))
-            }
-            QueryFormat::Csv => {
-                tabulate(self.rows, &data).and_then(|rows| OutputFormat::Csv.render(&rows))
-            }
+            QueryFormat::Table => OutputFormat::Table.render(&rows),
+            QueryFormat::Csv => OutputFormat::Csv.render(&rows),
         };
-        for warning in &warnings {
-            Rendered::line(&mut out.stderr, &format!("warning: {warning}"));
-        }
         match rendered {
             Ok(text) => {
                 if !text.is_empty() {
@@ -310,6 +321,7 @@ fn render_failure(
             completeness: None,
             partial_causes: Vec::new(),
             warnings: Vec::new(),
+            server: ServerNotices::default(),
             error: Some(ErrorReport {
                 kind: error_kind(error),
                 message: error.to_string(),
@@ -322,139 +334,213 @@ fn render_failure(
     Exit::of(error)
 }
 
-fn shape_error(what: &str) -> ClientError {
-    ClientError::ProtocolError(format!("the server's response has no {what}"))
+fn malformed(what: &str) -> ClientError {
+    ClientError::ProtocolError(format!("malformed response from the server: {what}"))
 }
 
-/// Rows for table and CSV output. Every cell is text exactly as the server
-/// sent it, so timestamps and sample values are never rounded.
-pub(crate) fn tabulate(rows: Rows, body: &Value) -> ClientResult<Vec<Value>> {
+/// Check a response against the shape its API defines and return its table
+/// rows. A trace has no table form, so only its shape is checked.
+fn check(rows: Rows, body: &Value) -> ClientResult<Vec<Value>> {
     match rows {
         Rows::Series => series_rows(body),
         Rows::Traces => trace_rows(body),
-        Rows::None => Err(ClientError::ConfigError(
-            "this result has no table form".into(),
-        )),
+        Rows::None => {
+            body.get("trace")
+                .and_then(Value::as_object)
+                .ok_or_else(|| malformed("no `trace` object"))?;
+            Ok(Vec::new())
+        }
     }
 }
 
-fn text(value: Option<&Value>) -> String {
-    match value {
-        Some(Value::String(s)) => s.clone(),
-        Some(Value::Null) | None => String::new(),
-        Some(other) => other.to_string(),
-    }
-}
-
-/// `{a="1", b="2"}`, keys sorted.
-fn labels(value: Option<&Value>) -> String {
-    let sorted: BTreeMap<&String, String> = value
-        .and_then(Value::as_object)
-        .map(|map| map.iter().map(|(k, v)| (k, text(Some(v)))).collect())
-        .unwrap_or_default();
-    let pairs: Vec<String> = sorted
-        .iter()
-        .map(|(k, v)| format!("{k}={}", Value::String(v.clone())))
-        .collect();
-    format!("{{{}}}", pairs.join(", "))
-}
-
-fn sample(labels: &str, point: Option<&Value>) -> Value {
-    let point = point.and_then(Value::as_array);
-    json!({
-        "labels": labels,
-        "timestamp": text(point.and_then(|p| p.first())),
-        "value": text(point.and_then(|p| p.get(1))),
+/// The server's `warnings` and `infos` lists. Absent or `null` lists are
+/// empty; anything other than a list of strings is malformed.
+fn notices(body: &Value) -> ClientResult<ServerNotices> {
+    Ok(ServerNotices {
+        warnings: strings(body, "warnings")?,
+        infos: strings(body, "infos")?,
     })
 }
 
+fn strings(body: &Value, key: &str) -> ClientResult<Vec<String>> {
+    match body.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| {
+                item.as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| malformed(&format!("`{key}` holds a value that is not text")))
+            })
+            .collect(),
+        Some(_) => Err(malformed(&format!("`{key}` is not a list"))),
+    }
+}
+
+fn field<'a>(object: &'a Value, key: &str, within: &str) -> ClientResult<&'a Value> {
+    object
+        .get(key)
+        .ok_or_else(|| malformed(&format!("{within} has no `{key}`")))
+}
+
+fn list<'a>(value: &'a Value, what: &str) -> ClientResult<&'a Vec<Value>> {
+    value
+        .as_array()
+        .ok_or_else(|| malformed(&format!("`{what}` is not a list")))
+}
+
+fn string<'a>(value: &'a Value, what: &str) -> ClientResult<&'a str> {
+    value
+        .as_str()
+        .ok_or_else(|| malformed(&format!("`{what}` is not text")))
+}
+
+/// `{a="1", b="2"}`, names sorted. Every label value must be text.
+fn labels(item: &Value, key: &str) -> ClientResult<String> {
+    let map = field(item, key, "a series")?
+        .as_object()
+        .ok_or_else(|| malformed(&format!("`{key}` is not an object")))?;
+    let mut pairs = Vec::with_capacity(map.len());
+    for (name, value) in map {
+        pairs.push((name, string(value, &format!("{key}.{name}"))?));
+    }
+    pairs.sort();
+    let pairs: Vec<String> = pairs
+        .iter()
+        .map(|(name, value)| format!("{name}={}", Value::String((*value).to_string())))
+        .collect();
+    Ok(format!("{{{}}}", pairs.join(", ")))
+}
+
+/// A `[timestamp, "value"]` sample: a numeric timestamp and a text value,
+/// both exactly as the server sent them.
+fn sample(labels: &str, point: &Value) -> ClientResult<Value> {
+    let (timestamp, value) = match list(point, "sample")?.as_slice() {
+        [timestamp @ Value::Number(_), Value::String(value)] => (timestamp, value),
+        _ => return Err(malformed("a sample is not [timestamp, \"value\"]")),
+    };
+    Ok(json!({
+        "labels": labels,
+        "timestamp": timestamp.to_string(),
+        "value": value,
+    }))
+}
+
+/// A `["ns", "line"]` or `["ns", "line", {metadata}]` log entry.
+fn log_entry(labels: &str, entry: &Value) -> ClientResult<Value> {
+    let (timestamp, line, metadata) = match list(entry, "values")?.as_slice() {
+        [Value::String(timestamp), Value::String(line)] => (timestamp, line, String::new()),
+        [
+            Value::String(timestamp),
+            Value::String(line),
+            metadata @ Value::Object(_),
+        ] => (timestamp, line, metadata.to_string()),
+        _ => {
+            return Err(malformed(
+                "a log entry is not [\"timestamp\", \"line\"] with optional metadata",
+            ));
+        }
+    };
+    Ok(json!({
+        "labels": labels,
+        "timestamp": timestamp,
+        "line": line,
+        "metadata": metadata,
+    }))
+}
+
 fn series_rows(body: &Value) -> ClientResult<Vec<Value>> {
-    let data = body.get("data").ok_or_else(|| shape_error("data"))?;
-    let kind = data
-        .get("resultType")
-        .and_then(Value::as_str)
-        .ok_or_else(|| shape_error("resultType"))?;
-    let result = data.get("result");
-    let items = || result.and_then(Value::as_array).into_iter().flatten();
+    if body.get("status").and_then(Value::as_str) != Some("success") {
+        return Err(malformed("`status` is not \"success\""));
+    }
+    let data = field(body, "data", "the response")?;
+    let kind = string(field(data, "resultType", "`data`")?, "resultType")?;
+    let result = field(data, "result", "`data`")?;
     let mut rows = Vec::new();
     match kind {
         "vector" => {
-            for item in items() {
-                rows.push(sample(&labels(item.get("metric")), item.get("value")));
+            for item in list(result, "result")? {
+                let series = labels(item, "metric")?;
+                rows.push(sample(&series, field(item, "value", "a vector sample")?)?);
             }
         }
         "matrix" => {
-            for item in items() {
-                let series = labels(item.get("metric"));
-                for point in item
-                    .get("values")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                {
-                    rows.push(sample(&series, Some(point)));
+            for item in list(result, "result")? {
+                let series = labels(item, "metric")?;
+                for point in list(field(item, "values", "a matrix series")?, "values")? {
+                    rows.push(sample(&series, point)?);
                 }
             }
         }
         "streams" => {
-            for item in items() {
-                let stream = labels(item.get("stream"));
-                for entry in item
-                    .get("values")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                {
-                    let entry = entry.as_array();
-                    rows.push(json!({
-                        "labels": stream,
-                        "timestamp": text(entry.and_then(|e| e.first())),
-                        "line": text(entry.and_then(|e| e.get(1))),
-                        "metadata": text(entry.and_then(|e| e.get(2))),
-                    }));
+            for item in list(result, "result")? {
+                let stream = labels(item, "stream")?;
+                for entry in list(field(item, "values", "a stream")?, "values")? {
+                    rows.push(log_entry(&stream, entry)?);
                 }
             }
         }
-        "scalar" | "string" => rows.push(sample("{}", result)),
+        "scalar" => rows.push(sample("{}", result)?),
+        "string" => {
+            let (timestamp, value) = match list(result, "result")?.as_slice() {
+                [timestamp @ Value::Number(_), Value::String(value)] => (timestamp, value),
+                _ => return Err(malformed("a string result is not [timestamp, \"text\"]")),
+            };
+            rows.push(json!({
+                "labels": "{}",
+                "timestamp": timestamp.to_string(),
+                "value": value,
+            }));
+        }
         other => {
-            return Err(ClientError::ProtocolError(format!(
-                "the server returned result type {other:?}, which has no table form"
-            )));
+            return Err(malformed(&format!("unknown result type {other:?}")));
         }
     }
     Ok(rows)
 }
 
+/// A Tempo search's traces. Every field the server defines must be present
+/// with its type, so no cell is left blank by a missing field.
 fn trace_rows(body: &Value) -> ClientResult<Vec<Value>> {
-    let traces = body
-        .get("traces")
-        .and_then(Value::as_array)
-        .ok_or_else(|| shape_error("traces"))?;
-    Ok(traces
-        .iter()
-        .map(|trace| {
-            json!({
-                "traceID": text(trace.get("traceID")),
-                "rootServiceName": text(trace.get("rootServiceName")),
-                "rootTraceName": text(trace.get("rootTraceName")),
-                "startTimeUnixNano": text(trace.get("startTimeUnixNano")),
-                "durationMs": text(trace.get("durationMs")),
-            })
-        })
-        .collect())
+    let traces = list(field(body, "traces", "the response")?, "traces")?;
+    let mut rows = Vec::with_capacity(traces.len());
+    for trace in traces {
+        let text = |key: &str| -> ClientResult<String> {
+            Ok(string(field(trace, key, "a trace")?, key)?.to_string())
+        };
+        let trace_id = text("traceID")?;
+        if trace_id.is_empty() {
+            return Err(malformed("a trace has an empty `traceID`"));
+        }
+        let duration = field(trace, "durationMs", "a trace")?
+            .as_u64()
+            .ok_or_else(|| malformed("`durationMs` is not a whole number"))?;
+        rows.push(json!({
+            "traceID": trace_id,
+            "rootServiceName": text("rootServiceName")?,
+            "rootTraceName": text("rootTraceName")?,
+            "startTimeUnixNano": text("startTimeUnixNano")?,
+            "durationMs": duration.to_string(),
+        }));
+    }
+    Ok(rows)
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::indexing_slicing)]
+#[allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
 
+    fn success(data: Value) -> Value {
+        json!({"status": "success", "data": data})
+    }
+
     #[test]
     fn vectors_and_matrices_become_one_row_per_sample() {
-        let vector = json!({"status": "success", "data": {"resultType": "vector", "result": [
+        let vector = success(json!({"resultType": "vector", "result": [
             {"metric": {"job": "a", "__name__": "up"}, "value": [1700000000.5, "NaN"]}
-        ]}});
-        let rows = tabulate(Rows::Series, &vector).expect("vector");
+        ]}));
+        let rows = check(Rows::Series, &vector).expect("vector");
         assert_eq!(
             rows,
             [json!({
@@ -463,58 +549,190 @@ mod tests {
                 "value": "NaN",
             })]
         );
-        let matrix = json!({"data": {"resultType": "matrix", "result": [
+        let matrix = success(json!({"resultType": "matrix", "result": [
             {"metric": {}, "values": [[1, "+Inf"], [2, "3"]]}
-        ]}});
-        let rows = tabulate(Rows::Series, &matrix).expect("matrix");
+        ]}));
+        let rows = check(Rows::Series, &matrix).expect("matrix");
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["value"], "+Inf");
         assert_eq!(rows[1]["labels"], "{}");
+        let empty = success(json!({"resultType": "vector", "result": []}));
+        assert!(check(Rows::Series, &empty).expect("empty").is_empty());
     }
 
     #[test]
     fn streams_keep_nanosecond_timestamps_and_metadata() {
-        let streams = json!({"data": {"resultType": "streams", "result": [
+        let streams = success(json!({"resultType": "streams", "result": [
             {"stream": {"app": "x"}, "values": [
-                ["1700000000123456789", "hello", {"trace_id": "t"}],
+                ["1700000000123456789", "hello", {"structuredMetadata": {"trace_id": "t"}}],
                 ["1700000000123456790", "world"]
             ]}
-        ]}});
-        let rows = tabulate(Rows::Series, &streams).expect("streams");
+        ]}));
+        let rows = check(Rows::Series, &streams).expect("streams");
         assert_eq!(rows[0]["timestamp"], "1700000000123456789");
         assert_eq!(rows[0]["line"], "hello");
-        assert_eq!(rows[0]["metadata"], "{\"trace_id\":\"t\"}");
+        assert_eq!(
+            rows[0]["metadata"],
+            "{\"structuredMetadata\":{\"trace_id\":\"t\"}}"
+        );
         assert_eq!(rows[1]["metadata"], "");
     }
 
     #[test]
-    fn scalars_and_traces_tabulate() {
-        let scalar = json!({"data": {"resultType": "scalar", "result": [1, "2"]}});
+    fn scalars_strings_traces_and_trace_lookups_check() {
+        let scalar = success(json!({"resultType": "scalar", "result": [1, "2"]}));
         assert_eq!(
-            tabulate(Rows::Series, &scalar).expect("scalar")[0]["value"],
+            check(Rows::Series, &scalar).expect("scalar")[0]["value"],
             "2"
         );
+        let text = success(json!({"resultType": "string", "result": [1, "hi"]}));
+        assert_eq!(
+            check(Rows::Series, &text).expect("string")[0]["value"],
+            "hi"
+        );
         let search = json!({"traces": [{"traceID": "ab", "rootServiceName": "api",
-            "rootTraceName": "GET", "startTimeUnixNano": "17", "durationMs": 5}]});
-        let rows = tabulate(Rows::Traces, &search).expect("traces");
+            "rootTraceName": "GET", "startTimeUnixNano": "17", "durationMs": 5,
+            "spanSets": []}], "metrics": {}});
+        let rows = check(Rows::Traces, &search).expect("traces");
         assert_eq!(rows[0]["traceID"], "ab");
         assert_eq!(rows[0]["durationMs"], "5");
+        let trace = json!({"trace": {"resourceSpans": []}, "metrics": {}});
+        assert!(check(Rows::None, &trace).expect("trace").is_empty());
     }
 
     #[test]
-    fn shapes_without_a_table_form_are_errors() {
+    fn malformed_shapes_are_protocol_errors_not_blank_output() {
+        let trace = |change: fn(&mut Value)| {
+            let mut search = json!({"traces": [{"traceID": "ab", "rootServiceName": "api",
+                "rootTraceName": "GET", "startTimeUnixNano": "17", "durationMs": 5}]});
+            change(&mut search["traces"][0]);
+            search
+        };
         let cases = [
             (Rows::Series, json!({})),
-            (Rows::Series, json!({"data": {}})),
             (
                 Rows::Series,
-                json!({"data": {"resultType": "histogram", "result": []}}),
+                json!({"data": {"resultType": "vector", "result": []}}),
             ),
+            (
+                Rows::Series,
+                json!({"status": "error", "data": {"resultType": "vector", "result": []}}),
+            ),
+            (Rows::Series, success(json!({}))),
+            (Rows::Series, success(json!({"resultType": "vector"}))),
+            (
+                Rows::Series,
+                success(json!({"resultType": "vector", "result": {}})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "histogram", "result": []})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "vector", "result": [{"value": [1, "2"]}]})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "vector", "result": [{"metric": {}}]})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "vector", "result": [
+                    {"metric": {"job": 1}, "value": [1, "2"]}
+                ]})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "vector", "result": [
+                    {"metric": {}, "value": [1]}
+                ]})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "vector", "result": [
+                    {"metric": {}, "value": ["1", 2]}
+                ]})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "matrix", "result": [{"metric": {}}]})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "streams", "result": [
+                    {"stream": {}, "values": [["1"]]}
+                ]})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "streams", "result": [
+                    {"stream": {}, "values": [[1, "line"]]}
+                ]})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "streams", "result": [
+                    {"stream": {}, "values": [["1", "line", "not an object"]]}
+                ]})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "scalar", "result": []})),
+            ),
+            (
+                Rows::Series,
+                success(json!({"resultType": "string", "result": [1, 2]})),
+            ),
+            (Rows::Traces, json!({})),
             (Rows::Traces, json!({"traces": "x"})),
+            (Rows::Traces, trace(|t| t["traceID"] = json!(""))),
+            (Rows::Traces, trace(|t| t["rootServiceName"] = Value::Null)),
+            (
+                Rows::Traces,
+                trace(|t| {
+                    t.as_object_mut().expect("object").remove("rootTraceName");
+                }),
+            ),
+            (Rows::Traces, trace(|t| t["startTimeUnixNano"] = json!(17))),
+            (Rows::Traces, trace(|t| t["durationMs"] = json!("5"))),
+            (Rows::Traces, trace(|t| t["durationMs"] = json!(-1))),
             (Rows::None, json!({})),
+            (Rows::None, json!({"trace": []})),
         ];
         for (rows, body) in cases {
-            assert!(tabulate(rows, &body).is_err(), "{rows:?} {body}");
+            match check(rows, &body) {
+                Err(ClientError::ProtocolError(message)) => {
+                    assert!(message.starts_with("malformed response"), "{message}");
+                }
+                other => panic!("{rows:?} {body}: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn server_warnings_and_infos_are_read_as_text_lists() {
+        let body = json!({"status": "success", "warnings": ["w1", "w2"], "infos": ["i1"]});
+        assert_eq!(
+            notices(&body).expect("notices"),
+            ServerNotices {
+                warnings: vec!["w1".into(), "w2".into()],
+                infos: vec!["i1".into()],
+            }
+        );
+        assert_eq!(
+            notices(&json!({"warnings": null})).expect("null"),
+            ServerNotices::default()
+        );
+        for bad in [
+            json!({"warnings": "w"}),
+            json!({"warnings": [1]}),
+            json!({"infos": {"a": "b"}}),
+        ] {
+            assert!(
+                matches!(notices(&bad), Err(ClientError::ProtocolError(_))),
+                "{bad}"
+            );
         }
     }
 }

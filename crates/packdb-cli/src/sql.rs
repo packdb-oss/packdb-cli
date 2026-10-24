@@ -25,7 +25,8 @@ use crate::Io;
 use crate::connection::ConnectionArgs;
 use crate::exit::{Exit, error_kind};
 use crate::output::{
-    Completeness, Envelope, ErrorReport, QueryFormat, TransportReport, completeness_warning,
+    Completeness, Envelope, ErrorReport, QueryFormat, ServerNotices, TransportReport,
+    completeness_warning,
 };
 use crate::render::{Rendered, deliver};
 
@@ -179,6 +180,7 @@ fn render_answer(args: &SqlArgs, endpoint: String, answer: RowsAnswer, out: &mut
             completeness: Some(completeness),
             partial_causes: response.partial_causes,
             warnings: warnings.clone(),
+            server: ServerNotices::default(),
             error: None,
             data: json!({ "rows": response.data }),
         }
@@ -230,6 +232,7 @@ fn render_failure(
             completeness: None,
             partial_causes: Vec::new(),
             warnings: warnings.clone(),
+            server: ServerNotices::default(),
             error: Some(ErrorReport {
                 kind: error_kind(&error),
                 message: error.to_string(),

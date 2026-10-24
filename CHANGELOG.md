@@ -28,6 +28,11 @@ this repository now provides; its 0.2.x archives are unchanged. See
   default to the last hour. Their completeness is `unknown` unless the server
   reports causes, except a found trace, which is `complete` without them. A trace the
   server reports it does not have exits `1`; any other `404` exits `7`.
+- Server `warnings` and `infos` from PromQL and LogQL answers are printed on stderr
+  (`warning: server: `, `note: server: `) and carried in the JSON envelope's new
+  `server_warnings` and `server_infos` lists, empty for `query sql`.
+- An answer that is not the shape its API defines exits `7` in every format instead
+  of printing empty rows or blank cells.
 - Table and CSV columns of `query sql` keep the order in which the response lists
   them instead of being sorted by name. That order is what the client receives;
   it is not promised to match the `SELECT` list.

@@ -106,6 +106,8 @@ server. `--help` and `--version` exit `0`.
     "completeness": "unknown",
     "partial_causes": [],
     "warnings": ["completeness unknown (...)"],
+    "server_warnings": [],
+    "server_infos": [],
     "error": null,
     "data": {"rows": [{"connected": 1}]}
   }
@@ -133,6 +135,17 @@ server. `--help` and `--version` exit `0`.
   or `csv` exits `2` and nothing is sent.
 - `error.kind` is one of `query_rejected`, `not_found`, `unauthenticated`,
   `permission_denied`, `unreachable`, `configuration` or `server_or_protocol`.
+- `warnings` are the command's own. The `warnings` and `infos` lists a Prometheus or
+  Loki answer carries are reported as received: in `server_warnings` and
+  `server_infos`, and on stderr as `warning: server: ...` and `note: server: ...`.
+  They do not change the exit code. Both lists are empty for `query sql`.
+- An answer that is not the shape its API defines is a server or protocol failure
+  (`7`, `error.kind` `server_or_protocol`) in every format, and nothing is printed on
+  stdout except the JSON envelope. That covers a `status` other than `success`, a
+  missing or mistyped field, a sample or log entry of the wrong arity, an unknown
+  result type, a search result missing any of the five columns, a trace without a
+  `trace` object, and `warnings` or `infos` that are not lists of text. A result is
+  never rendered with empty rows or blank cells in place of what is missing.
 
 ### Completeness
 
@@ -165,7 +178,7 @@ not reported by any cause.
 | `4` | not authenticated (`401`, gRPC `Unauthenticated`) |
 | `5` | permission denied (`403`, gRPC `PermissionDenied`) |
 | `6` | the server could not be reached |
-| `7` | server or protocol failure (any other non-2xx, including every `5xx`) |
+| `7` | server or protocol failure (any other non-2xx, including every `5xx`, or an answer that is not the shape its API defines) |
 | `8` | output could not be delivered: writing or flushing stdout or stderr failed (a full disk, a closed pipe), including warnings and error messages |
 
 When several apply, the first match in the order `8, 2, 4, 5, 6, 7, 1, 3` wins. A
@@ -218,7 +231,8 @@ other `404`, such as a missing route or a proxy's page, is `7`.
   `query traceql` and `trace` through `run()` against a mock server, covering the
   request each sends (times, windows, step, limit, direction, credentials and
   tenant), table and CSV columns, completeness for each command, the found and
-  missing trace, each exit code, and usage errors that send nothing.
+  missing trace, server warnings and infos, malformed answers in every format, each
+  exit code, and usage errors that send nothing.
 - `crates/packdb-cli-test-harness/tests/process.rs`: the same contract as a process
   sees it, covering help, the refused secret argument, stdout/stderr separation,
   exit codes, credential files, conflicts, a closed stdout (exit `8`), and the
