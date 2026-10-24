@@ -19,6 +19,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+mod support;
+
 use packdb_cli::{
     Command, ConnectionArgs, Environment, Exit, Io, QueryCommand, QueryFormat, SqlArgs,
     TransportChoice, run,
@@ -176,9 +178,8 @@ async fn a_json_failure_prints_the_envelope_with_its_error() {
 
 #[tokio::test]
 async fn an_unreachable_server_exits_6() {
-    let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
-    let endpoint = format!("http://{}", closed.local_addr().expect("addr"));
-    drop(closed);
+    let refusing = support::refusing_endpoint();
+    let endpoint = refusing.endpoint.clone();
     let outcome = sql(&endpoint, QueryFormat::Table, Env::default()).await;
     assert_eq!(outcome.exit, Exit::Unreachable);
     assert_eq!(outcome.stdout, "");
@@ -345,9 +346,8 @@ async fn a_usage_error_that_cannot_be_reported_exits_8() {
 #[tokio::test]
 async fn a_failure_after_fallback_reports_the_fallback() {
     let server = server(ResponseTemplate::new(401).set_body_string("who are you")).await;
-    let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
-    let flight = format!("http://{}", closed.local_addr().expect("addr"));
-    drop(closed);
+    let refusing = support::refusing_endpoint();
+    let flight = refusing.endpoint.clone();
     let command = Command::Query {
         language: QueryCommand::Sql(SqlArgs {
             sql: "SELECT count".into(),
