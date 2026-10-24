@@ -211,7 +211,7 @@ without evidence.
 | `process.ready` (required) | `GET /ready` | ready passes, not ready fails; names the checks that are not ready |
 | `process.version` | `GET /info` | the server's name and version, which `/health/detailed` must agree with |
 | `process.build_match` | — | `not_exposed`: the server reports no source revision |
-| `ingest.signals_enabled` (required) | `GET /v1/metrics`, `/v1/logs`, `/v1/traces` | each must answer `405` with `Allow: POST` |
+| `ingest.otlp_routes_mounted` (required) | `GET /v1/metrics`, `/v1/logs`, `/v1/traces` | each must answer `405` with `Allow: POST`; this shows the routes are mounted, not that ingestion works |
 | `query.surface_availability` (required) | one request per `--surface` | PromQL and TraceQL must reject a malformed query with their typed error; LogQL labels, Jaeger services and SQL must answer with their documented shape |
 | `durability.*`, `storage.tiers_attached`, `ingest.rejection_ratio`, `ingest.backpressure`, `limits.*` | — | `not_exposed` |
 
@@ -219,9 +219,12 @@ without evidence.
   8 MiB, and shaped as the route documents. A `401`, `403`, throttle, redirect,
   partial answer or other shape is recorded under `missing_evidence` and makes the
   report `incomplete`.
-- A `429` is retried at most twice, waiting `Retry-After` seconds (at most 2 s) or
-  250 ms, and never past `--timeout` from the first attempt. Nothing else is
-  retried. Once a request goes unanswered and the server has answered nothing,
+- One deadline, `--timeout` from the first attempt, covers every attempt, wait and
+  body of a request; each attempt gets only the time that remains. A `429` is retried
+  at most twice, after `Retry-After` seconds or 250 ms when none is given, and only
+  when that wait is at most 2 s and ends before the deadline. A longer wait, or an
+  HTTP-date `Retry-After`, is reported as a throttle without retrying. Nothing else
+  is retried. Once a request goes unanswered and the server has answered nothing,
   doctor stops sending.
 - Exit: `1` when a required check fails, even if other evidence is missing; `3`
   when required evidence is missing and nothing failed; `4` or `5` when the server
@@ -284,7 +287,7 @@ without evidence.
 - `crates/packdb-cli/tests/doctor.rs`: `doctor` through `run()` against a mock
   server: a healthy server passing with every `not_exposed` check listed and only
   `GET` requests sent, degraded, unhealthy and not-ready servers, unproven surfaces
-  and OTLP endpoints, disagreeing versions, `401` and `403`, an unreachable or silent
+  and OTLP routes, disagreeing versions, `401` and `403`, an unreachable or silent
   server, retried and persistent throttles, redirects, partial answers and oversized
   bodies, credentials and tenant on every request, and the text report.
 - `crates/packdb-cli-test-harness/tests/process.rs`: the same contract as a process

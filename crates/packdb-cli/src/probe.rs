@@ -20,12 +20,14 @@
 //! all — a rejected credential, a throttle, a redirect, a timeout or an
 //! oversized body — because none of those is evidence about the surface.
 //!
-//! Only `GET` is offered. A read throttled with `429` is sent again a bounded
-//! number of times, waiting for `Retry-After` up to a cap, and never past the
-//! request timeout measured from the first attempt.
+//! Only `GET` is offered. One deadline, the request timeout measured from the
+//! first attempt, covers every attempt, every wait and the body: each attempt
+//! is given only the time that remains. A read throttled with `429` is sent
+//! again at most twice, and only when the wait the server asks for is short
+//! and fits before the deadline; otherwise the throttle is reported.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use http::{HeaderMap, HeaderValue, StatusCode};
 use packdb_client::credentials::AuthProvider;
@@ -44,8 +46,8 @@ const RETRY_ATTEMPTS: u32 = 2;
 /// The wait before sending a throttled read again when the server names none.
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_millis(250);
 
-/// The longest `Retry-After` honoured. The header is the server's advice; one
-/// throttled read must not consume the whole run.
+/// The longest `Retry-After` waited for. A longer request is not shortened —
+/// that would retry before the server asked — so the throttle is reported.
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(2);
 
 /// Why a probe obtained no answer.
@@ -134,25 +136,58 @@ impl Prober {
         })
     }
 
-    /// `GET path` with encoded query parameters.
+    /// `GET path` with encoded query parameters, within the request timeout.
     pub(crate) async fn get(
         &self,
         path: &str,
         query: &[(&str, &str)],
     ) -> Result<ProbeResponse, ProbeError> {
-        let started = Instant::now();
+        let deadline = tokio::time::Instant::now() + self.timeout;
+        match tokio::time::timeout_at(deadline, self.get_until(path, query, deadline)).await {
+            Ok(result) => result,
+            Err(_) => Err(self.timed_out(path)),
+        }
+    }
+
+    async fn get_until(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+        deadline: tokio::time::Instant,
+    ) -> Result<ProbeResponse, ProbeError> {
         let mut attempts = 0;
         let response = loop {
-            let response = self.send(path, query).await?;
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(self.timed_out(path));
+            }
+            let response = self.send(path, query, remaining).await?;
             attempts += 1;
-            if response.status() != StatusCode::TOO_MANY_REQUESTS || attempts > RETRY_ATTEMPTS {
+            if response.status() != StatusCode::TOO_MANY_REQUESTS {
                 break response;
             }
-            let delay = retry_delay(response.headers());
-            if started.elapsed() + delay >= self.timeout {
-                break response;
+            let wait = match retry_delay(response.headers()) {
+                Ok(wait) if attempts <= RETRY_ATTEMPTS => wait,
+                Ok(_) => {
+                    return Err(ProbeError::NoEvidence(format!(
+                        "{path}: throttled (429) on each of {attempts} attempt(s)"
+                    )));
+                }
+                Err(asked) => {
+                    return Err(ProbeError::NoEvidence(format!(
+                        "{path}: throttled (429); the server asked to wait {asked}, \
+                         longer than doctor waits"
+                    )));
+                }
+            };
+            if tokio::time::Instant::now() + wait >= deadline {
+                return Err(ProbeError::NoEvidence(format!(
+                    "{path}: throttled (429); waiting {}s would pass the {}s timeout",
+                    wait.as_secs_f64(),
+                    self.timeout.as_secs_f64()
+                )));
             }
-            tokio::time::sleep(delay).await;
+            tokio::time::sleep(wait).await;
         };
         let status = response.status();
         match status.as_u16() {
@@ -176,11 +211,6 @@ impl Prober {
                     "{path}: the server timed out before answering (408)"
                 )));
             }
-            429 => {
-                return Err(ProbeError::NoEvidence(format!(
-                    "{path}: throttled (429) on each of {attempts} attempt(s)"
-                )));
-            }
             _ => {}
         }
         if status.is_redirection() {
@@ -200,10 +230,19 @@ impl Prober {
         })
     }
 
+    fn timed_out(&self, path: &str) -> ProbeError {
+        ProbeError::Unreachable(format!(
+            "{path}: no answer within {}s",
+            self.timeout.as_secs_f64()
+        ))
+    }
+
+    /// One attempt, allowed `remaining` from connecting to the end of its body.
     async fn send(
         &self,
         path: &str,
         query: &[(&str, &str)],
+        remaining: Duration,
     ) -> Result<reqwest::Response, ProbeError> {
         let mut headers = HeaderMap::new();
         if let Some(tenant) = &self.tenant {
@@ -215,6 +254,7 @@ impl Prober {
         let mut request = self
             .client
             .get(format!("{}{path}", self.base))
+            .timeout(remaining)
             .headers(headers);
         if !query.is_empty() {
             request = request.query(query);
@@ -250,10 +290,7 @@ impl Prober {
 
     fn send_error(&self, path: &str, error: &reqwest::Error) -> ProbeError {
         if error.is_timeout() {
-            ProbeError::Unreachable(format!(
-                "{path}: no answer within {}s",
-                self.timeout.as_secs_f64()
-            ))
+            self.timed_out(path)
         } else if error.is_connect() {
             ProbeError::Unreachable(format!("{path}: cannot connect: {error}"))
         } else {
@@ -263,34 +300,124 @@ impl Prober {
 }
 
 /// The wait before sending a throttled read again: `Retry-After` in seconds,
-/// capped. The HTTP-date form is not honoured; it would trust a remote clock.
-fn retry_delay(headers: &HeaderMap) -> Duration {
-    headers
-        .get(http::header::RETRY_AFTER)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .map_or(DEFAULT_RETRY_DELAY, Duration::from_secs)
-        .min(MAX_RETRY_DELAY)
+/// or the default when the server names none. `Err` holds the server's request
+/// when doctor will not honour it: longer than the cap, or an HTTP date, which
+/// would mean trusting a remote clock.
+fn retry_delay(headers: &HeaderMap) -> Result<Duration, String> {
+    let Some(value) = headers.get(http::header::RETRY_AFTER) else {
+        return Ok(DEFAULT_RETRY_DELAY);
+    };
+    let text = value.to_str().unwrap_or("").trim();
+    match text.parse::<u64>() {
+        Ok(seconds) if Duration::from_secs(seconds) <= MAX_RETRY_DELAY => {
+            Ok(Duration::from_secs(seconds))
+        }
+        Ok(seconds) => Err(format!("{seconds}s")),
+        Err(_) => Err(format!("until {text:?}")),
+    }
 }
 
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
-    fn retry_after_is_honoured_up_to_its_cap() {
+    fn a_retry_after_longer_than_the_cap_is_not_shortened() {
         let mut headers = HeaderMap::new();
-        assert_eq!(retry_delay(&headers), DEFAULT_RETRY_DELAY);
-        headers.insert(http::header::RETRY_AFTER, HeaderValue::from_static("1"));
-        assert_eq!(retry_delay(&headers), Duration::from_secs(1));
+        assert_eq!(retry_delay(&headers), Ok(DEFAULT_RETRY_DELAY));
+        headers.insert(http::header::RETRY_AFTER, HeaderValue::from_static("2"));
+        assert_eq!(retry_delay(&headers), Ok(Duration::from_secs(2)));
         headers.insert(http::header::RETRY_AFTER, HeaderValue::from_static("3600"));
-        assert_eq!(retry_delay(&headers), MAX_RETRY_DELAY);
+        assert_eq!(retry_delay(&headers), Err("3600s".to_string()));
         headers.insert(
             http::header::RETRY_AFTER,
             HeaderValue::from_static("Wed, 21 Oct 2015 07:28:00 GMT"),
         );
-        assert_eq!(retry_delay(&headers), DEFAULT_RETRY_DELAY);
+        assert!(retry_delay(&headers).is_err());
+    }
+
+    fn prober(endpoint: String, timeout: Duration) -> Prober {
+        Prober::new(Connection {
+            endpoint,
+            flight_endpoint: None,
+            auth: packdb_client::AuthConfig::none(),
+            tenant: None,
+            timeout,
+        })
+        .expect("prober")
+    }
+
+    #[tokio::test]
+    async fn a_long_retry_after_is_reported_without_retrying() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "3600"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let started = std::time::Instant::now();
+        let error = prober(server.uri(), Duration::from_secs(5))
+            .get("/ready", &[])
+            .await
+            .expect_err("throttled");
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(
+            matches!(&error, ProbeError::NoEvidence(m) if m.contains("asked to wait 3600s")),
+            "{error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn one_deadline_covers_every_attempt_and_wait() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "1"))
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(5)))
+            .mount(&server)
+            .await;
+        let started = std::time::Instant::now();
+        let error = prober(server.uri(), Duration::from_millis(1800))
+            .get("/ready", &[])
+            .await
+            .expect_err("deadline");
+        let elapsed = started.elapsed();
+        // The second attempt gets what remains after the 1 s wait, not a fresh
+        // 1.8 s.
+        assert!(elapsed >= Duration::from_secs(1), "{elapsed:?}");
+        assert!(elapsed < Duration::from_millis(2300), "{elapsed:?}");
+        assert!(
+            matches!(&error, ProbeError::Unreachable(m) if m.contains("no answer within 1.8s")),
+            "{error:?}"
+        );
+        assert_eq!(server.received_requests().await.expect("recorded").len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_wait_that_would_pass_the_deadline_is_not_taken() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "2"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let started = std::time::Instant::now();
+        let error = prober(server.uri(), Duration::from_secs(1))
+            .get("/ready", &[])
+            .await
+            .expect_err("throttled");
+        assert!(started.elapsed() < Duration::from_millis(500));
+        assert!(
+            matches!(&error, ProbeError::NoEvidence(m) if m.contains("would pass the 1s timeout")),
+            "{error:?}"
+        );
     }
 
     #[test]

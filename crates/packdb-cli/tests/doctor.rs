@@ -228,7 +228,7 @@ async fn a_healthy_server_passes_and_lists_what_it_does_not_expose() {
         "process.health",
         "process.ready",
         "process.version",
-        "ingest.signals_enabled",
+        "ingest.otlp_routes_mounted",
         "query.surface_availability",
     ] {
         assert_eq!(outcome.finding(id)["status"], "pass", "{id}");
@@ -571,7 +571,7 @@ async fn disagreeing_versions_and_unmounted_otlp_are_unknown() {
     let outcome = json_doctor(&server).await;
     assert_eq!(outcome.exit, Exit::Incomplete, "{}", outcome.stderr);
     assert_eq!(outcome.finding("process.version")["status"], "error");
-    let otlp = outcome.finding("ingest.signals_enabled");
+    let otlp = outcome.finding("ingest.otlp_routes_mounted");
     assert_eq!(otlp["status"], "error");
     assert_eq!(otlp["evidence"]["unproven"], json!(["logs"]));
     assert_eq!(otlp["evidence"]["proven"], json!(["metrics", "traces"]));

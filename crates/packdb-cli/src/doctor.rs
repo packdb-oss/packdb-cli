@@ -349,9 +349,10 @@ impl Doctor {
         );
     }
 
-    /// Each OTLP endpoint is mounted: `GET` answers `405` naming `POST`.
+    /// Each OTLP route is mounted: `GET` answers `405` naming `POST`. This
+    /// shows the routes exist, not that ingestion works.
     async fn otlp(&mut self, prober: &Prober) {
-        const ID: &str = "ingest.signals_enabled";
+        const ID: &str = "ingest.otlp_routes_mounted";
         let mut mounted = Vec::new();
         let mut unproven = Vec::new();
         for (signal, path) in OTLP_SIGNALS {
@@ -377,10 +378,10 @@ impl Doctor {
         }
         self.graded_list(
             ID,
-            "OTLP endpoint",
+            "OTLP route",
             &mounted,
             unproven,
-            "metrics, logs and traces OTLP endpoints are mounted",
+            "the metrics, logs and traces OTLP routes are mounted",
         );
     }
 
