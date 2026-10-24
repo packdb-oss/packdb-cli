@@ -32,7 +32,8 @@ this repository now provides; its 0.2.x archives are unchanged. See
   them instead of being sorted by name. That order is what the client receives;
   it is not promised to match the `SELECT` list.
 - Requires `packdb-client` with the transport and error changes of
-  packdb-oss/packdb-sdk#34, and with the query API client (`QueryApiClient`).
+  packdb-oss/packdb-sdk#34, and with the query API client (`QueryApiClient`) of
+  packdb-oss/packdb-sdk#36.
 
 ## 0.2.4
 
