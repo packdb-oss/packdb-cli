@@ -112,12 +112,45 @@ fn info() -> ResponseTemplate {
     }))
 }
 
-/// Only `GET /info` reached the server.
+/// Only `GET /info` and `GET /health/diagnostics` reached the server.
 async fn assert_only_info(server: &MockServer) {
     for request in server.received_requests().await.expect("recorded") {
         assert_eq!(request.method.as_str(), "GET");
-        assert_eq!(request.url.path(), "/info");
+        assert!(
+            ["/info", "/health/diagnostics"].contains(&request.url.path()),
+            "{}",
+            request.url
+        );
     }
+}
+
+fn diagnostics(health: &str, ready: bool) -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_json(json!({
+        "schema_version": "packdb.server.diagnostics.v1",
+        "health": {
+            "status": health, "timestamp": "2026-10-24T00:00:00Z", "version": "0.9.0",
+            "uptime_seconds": 12,
+            "checks": [{"name": "memory", "status": "healthy", "message": null},
+                       {"name": "storage", "status": health, "message": null}]
+        },
+        "readiness": {
+            "ready": ready, "timestamp": "2026-10-24T00:00:00Z",
+            "checks": [{"name": "query_engine", "ready": true, "message": null},
+                       {"name": "recovery.wal", "ready": ready, "message": "replaying"}]
+        },
+        "routes": {"otlp": ["metrics", "logs", "traces"], "query": ["logql", "sql"]}
+    }))
+}
+
+/// A server with `/info` and `/health/diagnostics`.
+async fn diagnosable(diagnostics: ResponseTemplate) -> MockServer {
+    let server = server(info()).await;
+    Mock::given(method("GET"))
+        .and(path("/health/diagnostics"))
+        .respond_with(diagnostics)
+        .mount(&server)
+        .await;
+    server
 }
 
 #[tokio::test]
@@ -300,4 +333,132 @@ async fn an_unreachable_or_silent_server_exits_6() {
         "{}",
         outcome.stderr
     );
+}
+
+#[tokio::test]
+async fn health_and_readiness_come_from_the_read_only_diagnostics_route() {
+    let server = diagnosable(diagnostics("healthy", true)).await;
+    let outcome = doctor(
+        at(&server.uri()),
+        OperatorFormat::Json,
+        Env::default().with("PACKDB_TENANT", "tenant-a"),
+    )
+    .await;
+    // OTLP and query handler proofs are still withheld, so the report stays
+    // incomplete even when the server is healthy and ready.
+    assert_eq!(outcome.exit, Exit::Incomplete, "{}", outcome.stderr);
+    let report = &outcome.envelope()["data"];
+    assert_eq!(report["counts"]["withheld"], 2);
+    for id in ["process.health", "process.ready"] {
+        let finding = outcome.finding(id);
+        assert_eq!(finding["status"], "pass", "{id}");
+        assert_eq!(finding["evidence"]["scope"], "server", "{id}");
+        let summary = finding["summary"].as_str().expect("summary");
+        assert!(
+            summary.contains("not the tenant in the request"),
+            "{summary}"
+        );
+    }
+    let routes = outcome.finding("routes.registered");
+    assert_eq!(routes["severity"], "info");
+    assert_eq!(routes["evidence"]["query"], json!(["logql", "sql"]));
+    let summary = routes["summary"].as_str().expect("summary");
+    assert!(summary.contains("registration does not show"), "{summary}");
+    for id in ["ingest.otlp_routes_mounted", "query.surface_availability"] {
+        assert_eq!(outcome.finding(id)["status"], "withheld", "{id}");
+    }
+    assert!(
+        outcome.stderr.contains("2 required check(s) withheld)"),
+        "{}",
+        outcome.stderr
+    );
+    assert_only_info(&server).await;
+}
+
+#[tokio::test]
+async fn degraded_warns_while_unhealthy_and_not_ready_fail() {
+    let degraded = doctor(
+        at(&diagnosable(diagnostics("degraded", true)).await.uri()),
+        OperatorFormat::Json,
+        Env::default(),
+    )
+    .await;
+    assert_eq!(degraded.exit, Exit::Incomplete, "{}", degraded.stderr);
+    assert_eq!(degraded.finding("process.health")["status"], "warn");
+
+    let unhealthy = doctor(
+        at(&diagnosable(diagnostics("unhealthy", true)).await.uri()),
+        OperatorFormat::Json,
+        Env::default(),
+    )
+    .await;
+    assert_eq!(unhealthy.exit, Exit::Rejected, "{}", unhealthy.stderr);
+    let health = unhealthy.finding("process.health");
+    assert_eq!(health["status"], "fail");
+    assert_eq!(
+        health["evidence"]["checks_not_healthy"],
+        json!(["storage=unhealthy"])
+    );
+
+    let not_ready = doctor(
+        at(&diagnosable(diagnostics("healthy", false)).await.uri()),
+        OperatorFormat::Json,
+        Env::default(),
+    )
+    .await;
+    assert_eq!(not_ready.exit, Exit::Rejected, "{}", not_ready.stderr);
+    let ready = not_ready.finding("process.ready");
+    assert_eq!(ready["status"], "fail");
+    assert_eq!(
+        ready["evidence"]["checks_not_ready"],
+        json!(["recovery.wal"])
+    );
+}
+
+#[tokio::test]
+async fn a_server_without_the_diagnostics_route_keeps_health_withheld() {
+    let outcome = doctor(
+        at(&server(info()).await.uri()),
+        OperatorFormat::Json,
+        Env::default(),
+    )
+    .await;
+    assert_eq!(outcome.exit, Exit::Incomplete, "{}", outcome.stderr);
+    let health = outcome.finding("process.health");
+    assert_eq!(health["status"], "withheld");
+    let summary = health["summary"].as_str().expect("summary");
+    assert!(
+        summary.contains("no /health/diagnostics (404)"),
+        "{summary}"
+    );
+}
+
+#[tokio::test]
+async fn an_unusable_diagnostics_answer_is_missing_evidence() {
+    for (response, exit, reason) in [
+        (
+            ResponseTemplate::new(200).set_body_json(json!({"schema_version": "other"})),
+            Exit::Incomplete,
+            "without the packdb.server.diagnostics.v1 shape",
+        ),
+        (
+            diagnostics("healthy", true)
+                .insert_header("x-packdb-partial-causes", "cold_tier_unavailable"),
+            Exit::Incomplete,
+            "partial result (cold_tier_unavailable)",
+        ),
+        (ResponseTemplate::new(403), Exit::PermissionDenied, "(403)"),
+    ] {
+        let server = diagnosable(response).await;
+        let outcome = doctor(at(&server.uri()), OperatorFormat::Json, Env::default()).await;
+        assert_eq!(outcome.exit, exit, "{reason}: {}", outcome.stderr);
+        for id in ["process.health", "process.ready"] {
+            assert_eq!(outcome.finding(id)["status"], "error", "{id}");
+        }
+        assert!(
+            outcome.stderr.contains(reason),
+            "{reason}: {}",
+            outcome.stderr
+        );
+    }
 }

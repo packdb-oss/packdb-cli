@@ -198,14 +198,21 @@ other `404`, such as a missing route or a proxy's page, is `7`.
 line per check with `--format text` (the default), or the JSON envelope with the
 report under `data` with `--format json`.
 
-Doctor is meant to create no state on the server it examines. The server's health,
-readiness, OTLP and query routes resolve the request's tenant, and several create the
-tenant's store on first use, so doctor does not call them. It sends one request,
-`GET /info`. In the open-source PackDB server this route's handler takes no tenant
-and no server state, and no middleware runs in front of it; a build that adds
-middleware in front of `/info` is not covered by that statement. The checks that need the other routes are `withheld` until the
-server offers a diagnostics route that creates nothing, so the report is always
-`incomplete` and doctor exits `3` when nothing else applies.
+Doctor is meant to create no state on the server it examines. The server's
+`/health/detailed`, `/ready`, OTLP and query routes resolve the request's tenant, and
+several create the tenant's store on first use, so doctor does not call them. It sends
+`GET /info` and `GET /health/diagnostics`, the server's read-only health and
+readiness. In the open-source PackDB server neither handler creates tenant state; a
+build that adds middleware in front of them is not covered by that statement.
+
+Health and readiness from `/health/diagnostics` describe the server's own monitoring
+scope, not the tenant in the request. Its route list says which OTLP and query routes
+are registered; it does not show that ingestion or queries work, so the checks that
+would (`ingest.otlp_routes_mounted`, `query.surface_availability`) stay `withheld`
+until the server offers a way to prove them that creates nothing. The report is
+therefore always `incomplete`, and doctor exits `3` when nothing else applies. A
+server without `/health/diagnostics` (`404`) leaves health and readiness `withheld`
+too.
 
 Each check is one of `pass`, `warn`, `fail`, `error` (its evidence could not be
 collected), `withheld` (a required check deliberately not run) or `not_exposed` (the
@@ -216,15 +223,20 @@ none is ever reported as a pass. `error` and `withheld` checks are listed under
 | check | outcome |
 | --- | --- |
 | `process.version` | `GET /info`: the server's name and version, with the environment it reports |
-| `process.health`, `process.ready`, `ingest.otlp_routes_mounted`, `query.surface_availability` (required) | `withheld` |
+| `process.health` (required) | `GET /health/diagnostics`: `healthy` passes, `degraded` warns, `unhealthy` fails; names the checks that are not healthy |
+| `process.ready` (required) | `GET /health/diagnostics`: ready passes, not ready fails; names the checks that are not ready |
+| `routes.registered` | `GET /health/diagnostics`: the OTLP and query routes the server reports as registered |
+| `ingest.otlp_routes_mounted`, `query.surface_availability` (required) | `withheld` |
 | `process.build_match`, `durability.ages`, `durability.recovery_state`, `storage.tiers_attached`, `ingest.rejection_ratio`, `ingest.backpressure`, `limits.query_pool`, `limits.admission`, `limits.cardinality` | `not_exposed` |
 
-- `/info` counts as evidence only when it is a complete, unredirected `200` of at most
-  8 MiB with the service's `name` and `version`. Anything else is `error` and listed
+- An answer counts as evidence only when it is a complete, unredirected `200` of at
+  most 8 MiB in the route's documented shape: `/info` with the service's `name` and
+  `version`; `/health/diagnostics` with `schema_version`
+  `packdb.server.diagnostics.v1`, `health`, `readiness` and `routes`. Anything else is `error` and listed
   under `missing_evidence` with its reason, also printed on stderr as
   `note: missing ...`.
 - One deadline, `--timeout` from the first attempt, covers every attempt, wait and
-  body of the request; each attempt gets only the time that remains. A `429` is
+  body of each request; each attempt gets only the time that remains. A `429` is
   retried at most twice, after `Retry-After` seconds or 250 ms when none is given,
   and only when that wait is at most 2 s and ends before the deadline. A longer wait,
   or an HTTP-date `Retry-After`, is reported as a throttle without retrying. Nothing
@@ -286,8 +298,9 @@ none is ever reported as a pass. `error` and `withheld` checks are listed under
   missing trace, server warnings and infos, malformed answers in every format, each
   exit code, and usage errors that send nothing.
 - `crates/packdb-cli/tests/doctor.rs` and the `probe` and `report` unit tests:
-  `doctor` through `run()` against a mock server, sending only `GET /info` with the
-  credential and tenant, withheld and not-exposed checks keeping the report
+  `doctor` through `run()` against a mock server, sending only `GET /info` and
+  `GET /health/diagnostics` with the credential and tenant, health and readiness from
+  the diagnostics route (healthy, degraded, unhealthy, not ready, absent, unusable), withheld and not-exposed checks keeping the report
   incomplete, unusable `/info` answers (wrong shape, partial, redirect, throttle),
   `401` and `403`, an unreachable or silent server, one deadline across retries,
   and a long `Retry-After` reported without retrying.
