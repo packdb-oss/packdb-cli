@@ -19,7 +19,8 @@ publish = false
 packdb-client = { version = "0.2.4", features = ["sql"] }
 clap = { version = "4.5", features = ["derive"] }
 http = "1"
-serde_json = "1"
+humantime = "2"
+serde_json = { version = "1", features = ["preserve_order"] }
 
 [dev-dependencies]
 tokio = { version = "1.49", features = ["macros", "rt"] }

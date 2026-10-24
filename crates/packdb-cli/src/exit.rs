@@ -83,13 +83,28 @@ impl Exit {
     /// The status a client error reports.
     pub(crate) fn of(error: &ClientError) -> Exit {
         match error {
-            ClientError::SqlError(_) => Exit::Rejected,
+            ClientError::SqlError(_) | ClientError::QueryError(_) | ClientError::NotFound(_) => {
+                Exit::Rejected
+            }
             ClientError::Unauthenticated(_) => Exit::Unauthenticated,
             ClientError::PermissionDenied(_) => Exit::PermissionDenied,
             ClientError::ConnectionError(_) => Exit::Unreachable,
             ClientError::ConfigError(_) | ClientError::IoError(_) => Exit::Usage,
             _ => Exit::ServerFailure,
         }
+    }
+}
+
+/// The JSON `error.kind` of a client error.
+pub(crate) fn error_kind(error: &ClientError) -> &'static str {
+    match error {
+        ClientError::SqlError(_) | ClientError::QueryError(_) => "query_rejected",
+        ClientError::NotFound(_) => "not_found",
+        ClientError::Unauthenticated(_) => "unauthenticated",
+        ClientError::PermissionDenied(_) => "permission_denied",
+        ClientError::ConnectionError(_) => "unreachable",
+        ClientError::ConfigError(_) | ClientError::IoError(_) => "configuration",
+        _ => "server_or_protocol",
     }
 }
 
@@ -136,27 +151,57 @@ mod tests {
     }
 
     #[test]
-    fn client_errors_map_to_their_status() {
+    fn client_errors_map_to_their_status_and_kind() {
         let cases = [
-            (ClientError::SqlError("x".into()), Exit::Rejected),
+            (
+                ClientError::SqlError("x".into()),
+                Exit::Rejected,
+                "query_rejected",
+            ),
+            (
+                ClientError::QueryError("x".into()),
+                Exit::Rejected,
+                "query_rejected",
+            ),
+            (
+                ClientError::NotFound("x".into()),
+                Exit::Rejected,
+                "not_found",
+            ),
             (
                 ClientError::Unauthenticated("x".into()),
                 Exit::Unauthenticated,
+                "unauthenticated",
             ),
             (
                 ClientError::PermissionDenied("x".into()),
                 Exit::PermissionDenied,
+                "permission_denied",
             ),
-            (ClientError::ConnectionError("x".into()), Exit::Unreachable),
-            (ClientError::ProtocolError("x".into()), Exit::ServerFailure),
-            (ClientError::ConfigError("x".into()), Exit::Usage),
+            (
+                ClientError::ConnectionError("x".into()),
+                Exit::Unreachable,
+                "unreachable",
+            ),
+            (
+                ClientError::ProtocolError("x".into()),
+                Exit::ServerFailure,
+                "server_or_protocol",
+            ),
+            (
+                ClientError::ConfigError("x".into()),
+                Exit::Usage,
+                "configuration",
+            ),
             (
                 ClientError::IoError(std::io::Error::other("x")),
                 Exit::Usage,
+                "configuration",
             ),
         ];
-        for (error, expected) in cases {
+        for (error, expected, kind) in cases {
             assert_eq!(Exit::of(&error), expected, "{error:?}");
+            assert_eq!(error_kind(&error), kind, "{error:?}");
         }
     }
 }

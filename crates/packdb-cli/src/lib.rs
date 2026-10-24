@@ -26,19 +26,30 @@
 #![deny(clippy::panic)]
 #![deny(clippy::unreachable)]
 
+mod api;
 mod connection;
 mod environment;
 mod exit;
+mod logql;
 mod output;
+mod promql;
+mod render;
 mod sql;
+mod time;
+mod trace;
+mod traceql;
 
 use std::io::Write;
 
 pub use connection::{ConnectionArgs, DEFAULT_ENDPOINT};
 pub use environment::{Environment, ProcessEnvironment};
 pub use exit::Exit;
+pub use logql::{LogDirection, LogqlArgs};
 pub use output::{QueryFormat, SCHEMA_VERSION};
+pub use promql::PromqlArgs;
 pub use sql::{SqlArgs, TransportChoice};
+pub use trace::TraceArgs;
+pub use traceql::TraceqlArgs;
 
 /// A `packdb` client command.
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -49,6 +60,8 @@ pub enum Command {
         #[command(subcommand)]
         language: QueryCommand,
     },
+    /// Read one trace by its ID.
+    Trace(TraceArgs),
 }
 
 /// A query language.
@@ -56,6 +69,12 @@ pub enum Command {
 pub enum QueryCommand {
     /// Run a SQL statement.
     Sql(SqlArgs),
+    /// Evaluate a PromQL expression at an instant or over a range.
+    Promql(PromqlArgs),
+    /// Run a LogQL query over a range, or a metric expression at an instant.
+    Logql(LogqlArgs),
+    /// Search traces with TraceQL.
+    Traceql(TraceqlArgs),
 }
 
 /// Where a command writes its output, and what it reads its settings from.
@@ -71,8 +90,12 @@ pub struct Io<'a> {
 /// Run a command and return its exit status.
 pub async fn run(command: Command, io: Io<'_>) -> Exit {
     match command {
-        Command::Query {
-            language: QueryCommand::Sql(args),
-        } => sql::run(args, io).await,
+        Command::Query { language } => match language {
+            QueryCommand::Sql(args) => sql::run(args, io).await,
+            QueryCommand::Promql(args) => promql::run(args, io).await,
+            QueryCommand::Logql(args) => logql::run(args, io).await,
+            QueryCommand::Traceql(args) => traceql::run(args, io).await,
+        },
+        Command::Trace(args) => trace::run(args, io).await,
     }
 }
