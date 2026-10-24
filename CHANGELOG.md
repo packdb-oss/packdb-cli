@@ -22,8 +22,23 @@ this repository now provides; its 0.2.x archives are unchanged. See
 - Exit codes: `4` not authenticated, `5` permission denied, `6` unreachable, `7`
   server or protocol failure, `8` output could not be delivered (writing or
   flushing stdout or stderr failed).
+- `packdb query promql`, `packdb query logql`, `packdb query traceql` and
+  `packdb trace <id>` use the same credentials, output envelope, completeness and
+  exit codes. Times are RFC 3339, Unix seconds, `now` or `now-<duration>`; windows
+  default to the last hour. Their completeness is `unknown` unless the server
+  reports causes, except a found trace, which is `complete` without them. A trace the
+  server reports it does not have exits `1`; any other `404` exits `7`.
+- Server `warnings` and `infos` from PromQL and LogQL answers are printed on stderr
+  (`warning: server: `, `note: server: `) and carried in the JSON envelope's new
+  `server_warnings` and `server_infos` lists, empty for `query sql`.
+- An answer that is not the shape its API defines exits `7` in every format instead
+  of printing empty rows or blank cells.
+- Table and CSV columns of `query sql` keep the order in which the response lists
+  them instead of being sorted by name. That order is what the client receives;
+  it is not promised to match the `SELECT` list.
 - Requires `packdb-client` with the transport and error changes of
-  packdb-oss/packdb-sdk#34.
+  packdb-oss/packdb-sdk#34, and with the query API client (`QueryApiClient`) of
+  packdb-oss/packdb-sdk#36.
 
 ## 0.2.4
 

@@ -15,20 +15,20 @@
 //! `packdb query sql`.
 
 use http::{HeaderMap, HeaderValue};
-use std::io::Write;
 
 use packdb_client::{
-    ClientError, OutputFormat, QueryFailure, RowsAnswer, SqlClient, SqlClientConfig, SqlTransport,
-    TransportUsed,
+    OutputFormat, QueryFailure, RowsAnswer, SqlClient, SqlClientConfig, SqlTransport, TransportUsed,
 };
 use serde_json::{Value, json};
 
 use crate::Io;
 use crate::connection::ConnectionArgs;
-use crate::exit::Exit;
+use crate::exit::{Exit, error_kind};
 use crate::output::{
-    Completeness, Envelope, ErrorReport, QueryFormat, TransportReport, completeness_warning,
+    Completeness, Envelope, ErrorReport, QueryFormat, ServerNotices, TransportReport,
+    completeness_warning,
 };
+use crate::render::{Rendered, deliver};
 
 /// Whether an absent completeness carrier on the SQL path establishes a
 /// complete result. Not yet: the server's SQL path has not been verified to
@@ -96,17 +96,6 @@ fn used(transport: TransportUsed) -> &'static str {
     }
 }
 
-fn error_kind(error: &ClientError) -> &'static str {
-    match error {
-        ClientError::SqlError(_) => "query_rejected",
-        ClientError::Unauthenticated(_) => "unauthenticated",
-        ClientError::PermissionDenied(_) => "permission_denied",
-        ClientError::ConnectionError(_) => "unreachable",
-        ClientError::ConfigError(_) | ClientError::IoError(_) => "configuration",
-        _ => "server_or_protocol",
-    }
-}
-
 pub(crate) async fn run(args: SqlArgs, io: Io<'_>) -> Exit {
     let Io {
         stdout,
@@ -151,55 +140,10 @@ pub(crate) async fn run(args: SqlArgs, io: Io<'_>) -> Exit {
     deliver(stdout, stderr, &out, exit)
 }
 
-/// Write the rendered streams and flush them. A result that cannot be
-/// delivered is a failure of its own, [`Exit::OutputFailed`], reported on
-/// stderr while stderr still works.
-fn deliver(stdout: &mut dyn Write, stderr: &mut dyn Write, out: &Rendered, exit: Exit) -> Exit {
-    let written = stdout
-        .write_all(out.stdout.as_bytes())
-        .and_then(|()| stdout.flush());
-    let reported = stderr
-        .write_all(out.stderr.as_bytes())
-        .and_then(|()| stderr.flush());
-    match (written, reported) {
-        (Ok(()), Ok(())) => exit,
-        (Err(error), Ok(())) => {
-            // Best effort: if this report cannot be written either, the exit
-            // code still says the output failed.
-            let report = writeln!(stderr, "error: cannot write the result to stdout: {error}")
-                .and_then(|()| stderr.flush());
-            drop(report);
-            Exit::OutputFailed
-        }
-        (_, Err(_)) => Exit::OutputFailed,
-    }
-}
-
 fn fallback_warning(reason: &str) -> String {
     format!(
         "Flight SQL could not be reached before the query was sent; used HTTP instead ({reason})"
     )
-}
-
-#[derive(Default)]
-struct Rendered {
-    stdout: String,
-    stderr: String,
-}
-
-impl Rendered {
-    fn error(message: &str) -> Self {
-        let mut out = Rendered::default();
-        Rendered::line(&mut out.stderr, &format!("error: {message}"));
-        out
-    }
-
-    fn line(text: &mut String, line: &str) {
-        text.push_str(line);
-        if !line.ends_with('\n') {
-            text.push('\n');
-        }
-    }
 }
 
 fn render_answer(args: &SqlArgs, endpoint: String, answer: RowsAnswer, out: &mut Rendered) -> Exit {
@@ -236,6 +180,7 @@ fn render_answer(args: &SqlArgs, endpoint: String, answer: RowsAnswer, out: &mut
             completeness: Some(completeness),
             partial_causes: response.partial_causes,
             warnings: warnings.clone(),
+            server: ServerNotices::default(),
             error: None,
             data: json!({ "rows": response.data }),
         }
@@ -287,6 +232,7 @@ fn render_failure(
             completeness: None,
             partial_causes: Vec::new(),
             warnings: warnings.clone(),
+            server: ServerNotices::default(),
             error: Some(ErrorReport {
                 kind: error_kind(&error),
                 message: error.to_string(),
@@ -324,23 +270,5 @@ mod tests {
         }
         assert_eq!(used(TransportUsed::Http), "http");
         assert_eq!(used(TransportUsed::FlightSql), "flight-sql");
-    }
-
-    #[test]
-    fn error_kinds_name_what_failed() {
-        let cases = [
-            (ClientError::SqlError("x".into()), "query_rejected"),
-            (ClientError::Unauthenticated("x".into()), "unauthenticated"),
-            (
-                ClientError::PermissionDenied("x".into()),
-                "permission_denied",
-            ),
-            (ClientError::ConnectionError("x".into()), "unreachable"),
-            (ClientError::ConfigError("x".into()), "configuration"),
-            (ClientError::ProtocolError("x".into()), "server_or_protocol"),
-        ];
-        for (error, kind) in cases {
-            assert_eq!(error_kind(&error), kind, "{error:?}");
-        }
     }
 }

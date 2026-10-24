@@ -382,3 +382,18 @@ async fn a_failure_after_fallback_reports_the_fallback() {
     let stderr = String::from_utf8(stderr).expect("utf-8");
     assert!(stderr.contains("used HTTP instead"), "{stderr}");
 }
+
+#[tokio::test]
+async fn csv_columns_keep_the_server_order() {
+    let server = server(
+        ResponseTemplate::new(200).set_body_json(json!({"rows": [{"zeta": 1, "alpha": 2}]})),
+    )
+    .await;
+    let outcome = sql(&server.uri(), QueryFormat::Csv, Env::default()).await;
+    assert_eq!(
+        outcome.stdout.lines().next(),
+        Some("zeta,alpha"),
+        "{}",
+        outcome.stdout
+    );
+}

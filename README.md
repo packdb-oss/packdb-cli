@@ -1,8 +1,8 @@
 # PackDB command library
 
 `packdb-cli` is the command library behind `packdb`, PackDB's command-line
-client. This release line implements `packdb query sql`; PromQL, LogQL, TraceQL
-and operator commands follow.
+client. It implements `packdb query sql|promql|logql|traceql` and `packdb trace`;
+operator commands follow.
 
 | Package | Scope |
 | --- | --- |

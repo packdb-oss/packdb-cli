@@ -309,3 +309,102 @@ async fn a_closed_stdout_exits_8() {
     server.join().expect("server thread");
     assert_eq!(status.code(), Some(8));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn help_lists_every_query_language_and_trace() {
+    let top = harness(&["--help"], &[]).await;
+    assert!(text(&top.stdout).contains("trace"), "{}", text(&top.stdout));
+    let query = harness(&["query", "--help"], &[]).await;
+    assert_eq!(query.status.code(), Some(0));
+    let help = text(&query.stdout);
+    for language in ["sql", "promql", "logql", "traceql"] {
+        assert!(help.contains(language), "{language}: {help}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_promql_answer_without_a_carrier_exits_3_as_unknown() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/query"))
+        .and(header("x-scope-orgid", "tenant-a"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"status": "success", "data": {"resultType": "scalar", "result": [1700000000, "1"]}}),
+        ))
+        .mount(&server)
+        .await;
+    let output = harness(
+        &["query", "promql", "1", "--format", "json"],
+        &[
+            ("PACKDB_ENDPOINT", &server.uri()),
+            ("PACKDB_TENANT", "tenant-a"),
+        ],
+    )
+    .await;
+    assert_eq!(output.status.code(), Some(3), "{}", text(&output.stderr));
+    let envelope: Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is one JSON object");
+    assert_eq!(envelope["command"], "query promql");
+    assert_eq!(envelope["completeness"], "unknown");
+    assert!(
+        text(&output.stderr).contains("warning: completeness unknown"),
+        "{}",
+        text(&output.stderr)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_found_trace_exits_0_and_a_missing_one_exits_1() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v2/traces/ab12"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"trace": {}})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v2/traces/ff"))
+        .respond_with(
+            ResponseTemplate::new(404).set_body_json(json!({"error": "trace not found: ff"})),
+        )
+        .mount(&server)
+        .await;
+    let found = harness(&["trace", "ab12"], &[("PACKDB_ENDPOINT", &server.uri())]).await;
+    assert_eq!(found.status.code(), Some(0), "{}", text(&found.stderr));
+    let envelope: Value = serde_json::from_slice(&found.stdout).expect("one JSON object");
+    assert_eq!(envelope["completeness"], "complete");
+    assert!(found.stderr.is_empty(), "{}", text(&found.stderr));
+
+    let missing = harness(&["trace", "ff"], &[("PACKDB_ENDPOINT", &server.uri())]).await;
+    assert_eq!(missing.status.code(), Some(1), "{}", text(&missing.stderr));
+    assert!(
+        text(&missing.stderr).contains("trace not found: ff"),
+        "{}",
+        text(&missing.stderr)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn conflicting_or_incomplete_time_arguments_exit_2() {
+    // Usage errors send nothing; a request would be refused and exit 6.
+    let refusing = refusing_endpoint();
+    for args in [
+        &[
+            "query", "promql", "up", "--time", "now", "--start", "now-1h",
+        ][..],
+        &[
+            "query",
+            "logql",
+            "{job=\"a\"}",
+            "--time",
+            "now",
+            "--step",
+            "1m",
+        ][..],
+        &["trace", "ab12", "--start", "now-1h"][..],
+        &["query", "traceql", "{}", "--start", "tomorrow"][..],
+    ] {
+        let output = harness(args, &[("PACKDB_ENDPOINT", &refusing.endpoint)]).await;
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?}");
+    }
+}
