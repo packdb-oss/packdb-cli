@@ -22,7 +22,7 @@ packdb query promql <EXPR> [connection] [--time T | --start T --end T --step D] 
 packdb query logql <EXPR> [connection] [--time T | --start T --end T --step D] [--limit N] [--direction forward|backward] [--format table|json|csv]
 packdb query traceql <QUERY> [connection] [--start T] [--end T] [--limit N] [--format table|json|csv]
 packdb trace <TRACE_ID> [connection] [--start T --end T] [--format json]
-packdb doctor [connection] [--surface promql,logql,traceql,jaeger,sql] [--format text|json]
+packdb doctor [connection] [--format text|json]
 ```
 
 `packdb` with no subcommand prints help to stderr and exits `2`; it never starts a
@@ -194,51 +194,52 @@ other `404`, such as a missing route or a proxy's page, is `7`.
 
 ### `doctor`
 
-`packdb doctor` checks a running server through its HTTP surface and prints a report:
-one line per check with `--format text` (the default), or the JSON envelope with the
-report under `data` with `--format json`. It sends only `GET` requests. `/ready` and
-`/health/detailed` initialize the requested tenant's store on the server if it does
-not exist yet, so a first run against a new tenant creates it.
+`packdb doctor` runs limited diagnostics of a running server and prints a report: one
+line per check with `--format text` (the default), or the JSON envelope with the
+report under `data` with `--format json`.
+
+Doctor is meant to create no state on the server it examines. The server's health,
+readiness, OTLP and query routes resolve the request's tenant, and several create the
+tenant's store on first use, so doctor does not call them. It sends one request,
+`GET /info`. In the open-source PackDB server this route's handler takes no tenant
+and no server state, and no middleware runs in front of it; a build that adds
+middleware in front of `/info` is not covered by that statement. The checks that need the other routes are `withheld` until the
+server offers a diagnostics route that creates nothing, so the report is always
+`incomplete` and doctor exits `3` when nothing else applies.
 
 Each check is one of `pass`, `warn`, `fail`, `error` (its evidence could not be
-collected; the verdict is unknown) or `not_exposed` (the server's HTTP API gives no
-evidence for it; the verdict is unknown). A check is never reported as passing
-without evidence.
+collected), `withheld` (a required check deliberately not run) or `not_exposed` (the
+server's HTTP API gives no evidence for it). The last three are verdicts of unknown;
+none is ever reported as a pass. `error` and `withheld` checks are listed under
+`missing_evidence`.
 
-| check | evidence | outcome |
-| --- | --- | --- |
-| `process.health` (required) | `GET /health/detailed` | `healthy` passes, `degraded` warns, `unhealthy` fails; names the checks that are not healthy |
-| `process.ready` (required) | `GET /ready` | ready passes, not ready fails; names the checks that are not ready |
-| `process.version` | `GET /info` | the server's name and version, which `/health/detailed` must agree with |
-| `process.build_match` | — | `not_exposed`: the server reports no source revision |
-| `ingest.otlp_routes_mounted` (required) | `GET /v1/metrics`, `/v1/logs`, `/v1/traces` | each must answer `405` with `Allow: POST`; this shows the routes are mounted, not that ingestion works |
-| `query.surface_availability` (required) | one request per `--surface` | PromQL and TraceQL must reject a malformed query with their typed error; LogQL labels, Jaeger services and SQL must answer with their documented shape |
-| `durability.*`, `storage.tiers_attached`, `ingest.rejection_ratio`, `ingest.backpressure`, `limits.*` | — | `not_exposed` |
+| check | outcome |
+| --- | --- |
+| `process.version` | `GET /info`: the server's name and version, with the environment it reports |
+| `process.health`, `process.ready`, `ingest.otlp_routes_mounted`, `query.surface_availability` (required) | `withheld` |
+| `process.build_match`, `durability.ages`, `durability.recovery_state`, `storage.tiers_attached`, `ingest.rejection_ratio`, `ingest.backpressure`, `limits.query_pool`, `limits.admission`, `limits.cardinality` | `not_exposed` |
 
-- An answer counts as evidence only when it is complete, unredirected, at most
-  8 MiB, and shaped as the route documents. A `401`, `403`, throttle, redirect,
-  partial answer or other shape is recorded under `missing_evidence` and makes the
-  report `incomplete`.
+- `/info` counts as evidence only when it is a complete, unredirected `200` of at most
+  8 MiB with the service's `name` and `version`. Anything else is `error` and listed
+  under `missing_evidence` with its reason, also printed on stderr as
+  `note: missing ...`.
 - One deadline, `--timeout` from the first attempt, covers every attempt, wait and
-  body of a request; each attempt gets only the time that remains. A `429` is retried
-  at most twice, after `Retry-After` seconds or 250 ms when none is given, and only
-  when that wait is at most 2 s and ends before the deadline. A longer wait, or an
-  HTTP-date `Retry-After`, is reported as a throttle without retrying. Nothing else
-  is retried. Once a request goes unanswered and the server has answered nothing,
-  doctor stops sending.
-- Exit: `1` when a required check fails, even if other evidence is missing; `3`
-  when required evidence is missing and nothing failed; `4` or `5` when the server
-  refused the credential; `6` when the server answered no request; otherwise `0`.
-  The precedence above applies. The envelope's `completeness` is `complete` or,
-  when evidence is missing, `unknown`; the report's own is `complete` or
-  `incomplete`.
+  body of the request; each attempt gets only the time that remains. A `429` is
+  retried at most twice, after `Retry-After` seconds or 250 ms when none is given,
+  and only when that wait is at most 2 s and ends before the deadline. A longer wait,
+  or an HTTP-date `Retry-After`, is reported as a throttle without retrying. Nothing
+  else is retried.
+- Exit: `1` when a required check fails; `3` while any required check is withheld or
+  its evidence is missing; `4` or `5` when the server refuses the credential; `6`
+  when the server does not answer. The precedence above applies. The envelope's
+  `completeness` is `unknown`; the report's is `incomplete`. stderr always carries
+  `warning: completeness unknown (limited diagnostics: ...)`.
 - The report (`schema_version` `packdb.cli.diagnostics.v1`) holds `report_kind`,
   `started_at`, `finished_at`, `tool`, `target` (the endpoint without user
   information, whether a tenant was supplied, and the server's environment),
-  `requested_scope`, `completeness`, `counts`, `findings` (`id`, `status`,
-  `severity` `required` or `info`, `summary`, `evidence`) and `missing_evidence`
-  (`evidence`, `reason`). Missing evidence is also listed on stderr as
-  `note: missing ...`.
+  `requested_scope` (`diagnostics`: `limited`), `completeness`, `counts`, `findings`
+  (`id`, `status`, `severity` `required` or `info`, `summary`, `evidence`) and
+  `missing_evidence` (`evidence`, `reason`).
 
 ## Not promised
 
@@ -284,12 +285,12 @@ without evidence.
   tenant), table and CSV columns, completeness for each command, the found and
   missing trace, server warnings and infos, malformed answers in every format, each
   exit code, and usage errors that send nothing.
-- `crates/packdb-cli/tests/doctor.rs`: `doctor` through `run()` against a mock
-  server: a healthy server passing with every `not_exposed` check listed and only
-  `GET` requests sent, degraded, unhealthy and not-ready servers, unproven surfaces
-  and OTLP routes, disagreeing versions, `401` and `403`, an unreachable or silent
-  server, retried and persistent throttles, redirects, partial answers and oversized
-  bodies, credentials and tenant on every request, and the text report.
+- `crates/packdb-cli/tests/doctor.rs` and the `probe` and `report` unit tests:
+  `doctor` through `run()` against a mock server, sending only `GET /info` with the
+  credential and tenant, withheld and not-exposed checks keeping the report
+  incomplete, unusable `/info` answers (wrong shape, partial, redirect, throttle),
+  `401` and `403`, an unreachable or silent server, one deadline across retries,
+  and a long `Retry-After` reported without retrying.
 - `crates/packdb-cli-test-harness/tests/process.rs`: the same contract as a process
   sees it, covering help, the refused secret argument, stdout/stderr separation,
   exit codes, credential files, conflicts, a closed stdout (exit `8`), the PromQL,

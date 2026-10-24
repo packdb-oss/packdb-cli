@@ -45,7 +45,7 @@ mod traceql;
 use std::io::Write;
 
 pub use connection::{ConnectionArgs, DEFAULT_ENDPOINT};
-pub use doctor::{DoctorArgs, Surface};
+pub use doctor::DoctorArgs;
 pub use environment::{Environment, ProcessEnvironment};
 pub use exit::Exit;
 pub use logql::{LogDirection, LogqlArgs};

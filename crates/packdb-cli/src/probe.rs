@@ -89,7 +89,6 @@ impl ProbeError {
 #[derive(Debug)]
 pub(crate) struct ProbeResponse {
     pub(crate) status: StatusCode,
-    pub(crate) headers: HeaderMap,
     pub(crate) body: Vec<u8>,
     pub(crate) partial_causes: Vec<String>,
 }
@@ -136,14 +135,10 @@ impl Prober {
         })
     }
 
-    /// `GET path` with encoded query parameters, within the request timeout.
-    pub(crate) async fn get(
-        &self,
-        path: &str,
-        query: &[(&str, &str)],
-    ) -> Result<ProbeResponse, ProbeError> {
+    /// `GET path`, within the request timeout.
+    pub(crate) async fn get(&self, path: &str) -> Result<ProbeResponse, ProbeError> {
         let deadline = tokio::time::Instant::now() + self.timeout;
-        match tokio::time::timeout_at(deadline, self.get_until(path, query, deadline)).await {
+        match tokio::time::timeout_at(deadline, self.get_until(path, deadline)).await {
             Ok(result) => result,
             Err(_) => Err(self.timed_out(path)),
         }
@@ -152,7 +147,6 @@ impl Prober {
     async fn get_until(
         &self,
         path: &str,
-        query: &[(&str, &str)],
         deadline: tokio::time::Instant,
     ) -> Result<ProbeResponse, ProbeError> {
         let mut attempts = 0;
@@ -161,7 +155,7 @@ impl Prober {
             if remaining.is_zero() {
                 return Err(self.timed_out(path));
             }
-            let response = self.send(path, query, remaining).await?;
+            let response = self.send(path, remaining).await?;
             attempts += 1;
             if response.status() != StatusCode::TOO_MANY_REQUESTS {
                 break response;
@@ -219,12 +213,10 @@ impl Prober {
                 status.as_u16()
             )));
         }
-        let headers = response.headers().clone();
-        let partial_causes = packdb_client::partial_causes_of(&headers);
+        let partial_causes = packdb_client::partial_causes_of(response.headers());
         let body = self.bounded_body(path, response).await?;
         Ok(ProbeResponse {
             status,
-            headers,
             body,
             partial_causes,
         })
@@ -238,12 +230,7 @@ impl Prober {
     }
 
     /// One attempt, allowed `remaining` from connecting to the end of its body.
-    async fn send(
-        &self,
-        path: &str,
-        query: &[(&str, &str)],
-        remaining: Duration,
-    ) -> Result<reqwest::Response, ProbeError> {
+    async fn send(&self, path: &str, remaining: Duration) -> Result<reqwest::Response, ProbeError> {
         let mut headers = HeaderMap::new();
         if let Some(tenant) = &self.tenant {
             headers.insert("x-scope-orgid", tenant.clone());
@@ -251,15 +238,10 @@ impl Prober {
         self.auth.apply(&mut headers).await.map_err(|error| {
             ProbeError::NoEvidence(format!("the credential could not be applied: {error}"))
         })?;
-        let mut request = self
-            .client
+        self.client
             .get(format!("{}{path}", self.base))
             .timeout(remaining)
-            .headers(headers);
-        if !query.is_empty() {
-            request = request.query(query);
-        }
-        request
+            .headers(headers)
             .send()
             .await
             .map_err(|error| self.send_error(path, &error))
@@ -360,7 +342,7 @@ mod tests {
             .await;
         let started = std::time::Instant::now();
         let error = prober(server.uri(), Duration::from_secs(5))
-            .get("/ready", &[])
+            .get("/ready")
             .await
             .expect_err("throttled");
         assert!(started.elapsed() < Duration::from_secs(1));
@@ -385,7 +367,7 @@ mod tests {
             .await;
         let started = std::time::Instant::now();
         let error = prober(server.uri(), Duration::from_millis(1800))
-            .get("/ready", &[])
+            .get("/ready")
             .await
             .expect_err("deadline");
         let elapsed = started.elapsed();
@@ -410,7 +392,7 @@ mod tests {
             .await;
         let started = std::time::Instant::now();
         let error = prober(server.uri(), Duration::from_secs(1))
-            .get("/ready", &[])
+            .get("/ready")
             .await
             .expect_err("throttled");
         assert!(started.elapsed() < Duration::from_millis(500));

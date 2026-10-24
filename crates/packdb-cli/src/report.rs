@@ -15,11 +15,11 @@
 //! The evidence report of the diagnostics commands.
 //!
 //! A report lists one finding per check and every piece of required evidence
-//! that could not be collected. It keeps three outcomes apart: a check that
-//! ran and passed or failed, a check whose evidence could not be collected
-//! (`error`, which makes the report incomplete), and a check the server gives
-//! no evidence for at all (`not_exposed`, which is reported and never counts
-//! as a pass).
+//! that was not obtained. It keeps four outcomes apart: a check that ran and
+//! passed or failed; a check whose evidence could not be collected (`error`);
+//! a required check deliberately not run (`withheld`) — both of which leave
+//! the report incomplete; and a check the server gives no evidence for at all
+//! (`not_exposed`, reported and never counted as a pass).
 
 use std::collections::BTreeMap;
 use std::time::SystemTime;
@@ -43,6 +43,8 @@ pub(crate) enum Status {
     Fail,
     /// The evidence could not be collected; the verdict is unknown.
     Error,
+    /// A required check deliberately not run; the verdict is unknown.
+    Withheld,
     /// The server exposes no evidence for this check; the verdict is unknown.
     NotExposed,
 }
@@ -54,6 +56,7 @@ impl Status {
             Status::Warn => "warn",
             Status::Fail => "fail",
             Status::Error => "error",
+            Status::Withheld => "withheld",
             Status::NotExposed => "not_exposed",
         }
     }
@@ -64,6 +67,7 @@ impl Status {
             Status::Warn => "warn",
             Status::Fail => "FAIL",
             Status::Error => "ERROR",
+            Status::Withheld => "withheld",
             Status::NotExposed => "not exposed",
         }
     }
@@ -193,7 +197,7 @@ impl Report {
             && !self
                 .findings
                 .iter()
-                .any(|finding| finding.status == Status::Error)
+                .any(|finding| matches!(finding.status, Status::Error | Status::Withheld))
     }
 
     pub(crate) fn completeness(&self) -> Completeness {
@@ -227,6 +231,7 @@ impl Report {
             Status::Warn,
             Status::Fail,
             Status::Error,
+            Status::Withheld,
             Status::NotExposed,
         ] {
             counts.insert(status.as_str(), 0);
@@ -276,7 +281,7 @@ impl Report {
         let counts = self.counts();
         let count = |status: Status| counts.get(status.as_str()).copied().unwrap_or(0);
         text.push_str(&format!(
-            "completeness: {}; {} pass, {} warn, {} fail, {} error, {} not exposed\n",
+            "completeness: {}; {} pass, {} warn, {} fail, {} error, {} withheld, {} not exposed\n",
             if self.is_complete() {
                 "complete"
             } else {
@@ -286,6 +291,7 @@ impl Report {
             count(Status::Warn),
             count(Status::Fail),
             count(Status::Error),
+            count(Status::Withheld),
             count(Status::NotExposed),
         ));
         text
@@ -354,6 +360,19 @@ mod tests {
     }
 
     #[test]
+    fn a_withheld_check_is_never_complete() {
+        let withheld = report(vec![Finding::new(
+            "a",
+            Severity::Required,
+            Status::Withheld,
+            "not run",
+        )]);
+        assert!(!withheld.is_complete());
+        assert_eq!(withheld.exit(), Exit::Incomplete);
+        assert_eq!(withheld.to_json()["counts"]["withheld"], 1);
+    }
+
+    #[test]
     fn text_lists_each_finding_and_the_totals() {
         let text = report(vec![
             Finding::new(
@@ -376,7 +395,7 @@ mod tests {
         );
         assert!(text.contains("not exposed  storage.tiers"), "{text}");
         assert!(
-            text.ends_with("1 pass, 0 warn, 0 fail, 0 error, 1 not exposed\n"),
+            text.ends_with("1 pass, 0 warn, 0 fail, 0 error, 0 withheld, 1 not exposed\n"),
             "{text}"
         );
     }

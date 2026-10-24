@@ -424,7 +424,7 @@ async fn doctor_is_listed_refuses_csv_and_exits_6_when_unreachable() {
     let output = harness(&["doctor"], &[("PACKDB_ENDPOINT", &refusing.endpoint)]).await;
     assert_eq!(output.status.code(), Some(6), "{}", text(&output.stderr));
     assert!(
-        text(&output.stdout).starts_with("packdb doctor: "),
+        text(&output.stdout).starts_with("packdb doctor (limited diagnostics): "),
         "{}",
         text(&output.stdout)
     );

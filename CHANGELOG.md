@@ -33,12 +33,12 @@ this repository now provides; its 0.2.x archives are unchanged. See
   `server_warnings` and `server_infos` lists, empty for `query sql`.
 - An answer that is not the shape its API defines exits `7` in every format instead
   of printing empty rows or blank cells.
-- `packdb doctor` checks a running server through its HTTP surface: health,
-  readiness, version, whether the OTLP routes are mounted and each query surface,
-  and lists the checks whose evidence the server does not expose. It prints a text
-  report or the JSON envelope with a `packdb.cli.diagnostics.v1` report, exits `1`
-  when a required check fails and `3` when required evidence is missing, and sends
-  only `GET` requests.
+- `packdb doctor` runs limited diagnostics of a running server without creating
+  state on it: it reads only `GET /info`. Health, readiness, OTLP route and query
+  surface checks are `withheld`, because the routes they need can create tenant
+  state, so the report stays incomplete and doctor exits `3`; checks the server's
+  HTTP API does not expose are listed as `not_exposed`. It prints a text report or
+  the JSON envelope with a `packdb.cli.diagnostics.v1` report.
 - Table and CSV columns of `query sql` keep the order in which the response lists
   them instead of being sorted by name. That order is what the client receives;
   it is not promised to match the `SELECT` list.
