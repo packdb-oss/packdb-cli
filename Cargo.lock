@@ -1619,6 +1619,7 @@ dependencies = [
  "http",
  "humantime",
  "packdb-client",
+ "reqwest",
  "serde_json",
  "tokio",
  "wiremock",

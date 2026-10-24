@@ -22,6 +22,7 @@ packdb query promql <EXPR> [connection] [--time T | --start T --end T --step D] 
 packdb query logql <EXPR> [connection] [--time T | --start T --end T --step D] [--limit N] [--direction forward|backward] [--format table|json|csv]
 packdb query traceql <QUERY> [connection] [--start T] [--end T] [--limit N] [--format table|json|csv]
 packdb trace <TRACE_ID> [connection] [--start T --end T] [--format json]
+packdb doctor [connection] [--surface promql,logql,traceql,jaeger,sql] [--format text|json]
 ```
 
 `packdb` with no subcommand prints help to stderr and exits `2`; it never starts a
@@ -191,6 +192,51 @@ reports it has no part of (a `404` with the body `{"error": "trace not found: <i
 for the requested ID and no partial causes) is `1` with `error.kind` `not_found`; any
 other `404`, such as a missing route or a proxy's page, is `7`.
 
+### `doctor`
+
+`packdb doctor` checks a running server through its HTTP surface and prints a report:
+one line per check with `--format text` (the default), or the JSON envelope with the
+report under `data` with `--format json`. It sends only `GET` requests. `/ready` and
+`/health/detailed` initialize the requested tenant's store on the server if it does
+not exist yet, so a first run against a new tenant creates it.
+
+Each check is one of `pass`, `warn`, `fail`, `error` (its evidence could not be
+collected; the verdict is unknown) or `not_exposed` (the server's HTTP API gives no
+evidence for it; the verdict is unknown). A check is never reported as passing
+without evidence.
+
+| check | evidence | outcome |
+| --- | --- | --- |
+| `process.health` (required) | `GET /health/detailed` | `healthy` passes, `degraded` warns, `unhealthy` fails; names the checks that are not healthy |
+| `process.ready` (required) | `GET /ready` | ready passes, not ready fails; names the checks that are not ready |
+| `process.version` | `GET /info` | the server's name and version, which `/health/detailed` must agree with |
+| `process.build_match` | — | `not_exposed`: the server reports no source revision |
+| `ingest.signals_enabled` (required) | `GET /v1/metrics`, `/v1/logs`, `/v1/traces` | each must answer `405` with `Allow: POST` |
+| `query.surface_availability` (required) | one request per `--surface` | PromQL and TraceQL must reject a malformed query with their typed error; LogQL labels, Jaeger services and SQL must answer with their documented shape |
+| `durability.*`, `storage.tiers_attached`, `ingest.rejection_ratio`, `ingest.backpressure`, `limits.*` | — | `not_exposed` |
+
+- An answer counts as evidence only when it is complete, unredirected, at most
+  8 MiB, and shaped as the route documents. A `401`, `403`, throttle, redirect,
+  partial answer or other shape is recorded under `missing_evidence` and makes the
+  report `incomplete`.
+- A `429` is retried at most twice, waiting `Retry-After` seconds (at most 2 s) or
+  250 ms, and never past `--timeout` from the first attempt. Nothing else is
+  retried. Once a request goes unanswered and the server has answered nothing,
+  doctor stops sending.
+- Exit: `1` when a required check fails, even if other evidence is missing; `3`
+  when required evidence is missing and nothing failed; `4` or `5` when the server
+  refused the credential; `6` when the server answered no request; otherwise `0`.
+  The precedence above applies. The envelope's `completeness` is `complete` or,
+  when evidence is missing, `unknown`; the report's own is `complete` or
+  `incomplete`.
+- The report (`schema_version` `packdb.cli.diagnostics.v1`) holds `report_kind`,
+  `started_at`, `finished_at`, `tool`, `target` (the endpoint without user
+  information, whether a tenant was supplied, and the server's environment),
+  `requested_scope`, `completeness`, `counts`, `findings` (`id`, `status`,
+  `severity` `required` or `info`, `summary`, `evidence`) and `missing_evidence`
+  (`evidence`, `reason`). Missing evidence is also listed on stderr as
+  `note: missing ...`.
+
 ## Not promised
 
 - **Exact table layout.** Parse `json` or `csv` instead.
@@ -198,6 +244,8 @@ other `404`, such as a missing route or a proxy's page, is `7`.
 - **`--help` and `--version` formatting.**
 - **Ordering of result rows**, unless the query orders them.
 - **Column order of `query sql` table and CSV output.**
+- **`doctor` summaries and evidence values**, beyond the check identifiers, statuses
+  and severities listed above.
 - **JSON key order and whitespace.**
 
 ## Migrating from `packdb-query`
@@ -233,10 +281,16 @@ other `404`, such as a missing route or a proxy's page, is `7`.
   tenant), table and CSV columns, completeness for each command, the found and
   missing trace, server warnings and infos, malformed answers in every format, each
   exit code, and usage errors that send nothing.
+- `crates/packdb-cli/tests/doctor.rs`: `doctor` through `run()` against a mock
+  server: a healthy server passing with every `not_exposed` check listed and only
+  `GET` requests sent, degraded, unhealthy and not-ready servers, unproven surfaces
+  and OTLP endpoints, disagreeing versions, `401` and `403`, an unreachable or silent
+  server, retried and persistent throttles, redirects, partial answers and oversized
+  bodies, credentials and tenant on every request, and the text report.
 - `crates/packdb-cli-test-harness/tests/process.rs`: the same contract as a process
   sees it, covering help, the refused secret argument, stdout/stderr separation,
-  exit codes, credential files, conflicts, a closed stdout (exit `8`), and the
-  PromQL, trace and time-argument cases.
+  exit codes, credential files, conflicts, a closed stdout (exit `8`), the PromQL,
+  trace and time-argument cases, and `doctor`.
 - `packdb-client`'s own tests cover the transport fallback rules, the query API
   requests and error classification.
 

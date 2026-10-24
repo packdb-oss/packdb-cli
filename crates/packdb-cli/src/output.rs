@@ -31,6 +31,16 @@ pub enum QueryFormat {
     Csv,
 }
 
+/// Output format of an operator command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum OperatorFormat {
+    /// A human report.
+    #[default]
+    Text,
+    /// One JSON object: the CLI envelope with the report under `data`.
+    Json,
+}
+
 /// Whether a result is known to be complete.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Completeness {
