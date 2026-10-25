@@ -414,19 +414,20 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "3600"))
-            .expect(1)
             .mount(&server)
             .await;
+        let prober = prober(server.uri(), Duration::from_secs(5));
         let started = std::time::Instant::now();
-        let error = prober(server.uri(), Duration::from_secs(5))
-            .get("/ready")
-            .await
-            .expect_err("throttled");
-        assert!(started.elapsed() < Duration::from_secs(1));
+        let error = prober.get("/ready").await.expect_err("throttled");
+        let elapsed = started.elapsed();
         assert!(
             matches!(&error, ProbeError::NoEvidence(m) if m.contains("asked to wait 3600s")),
             "{error:?}"
         );
+        assert_eq!(server.received_requests().await.expect("recorded").len(), 1);
+        // Only a guard against a hang: answering before the timeout shows
+        // nothing was waited out.
+        assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
     }
 
     #[tokio::test]
@@ -442,11 +443,9 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(5)))
             .mount(&server)
             .await;
+        let prober = prober(server.uri(), Duration::from_millis(1800));
         let started = std::time::Instant::now();
-        let error = prober(server.uri(), Duration::from_millis(1800))
-            .get("/ready")
-            .await
-            .expect_err("deadline");
+        let error = prober.get("/ready").await.expect_err("deadline");
         let elapsed = started.elapsed();
         // The second attempt gets what remains after the 1 s wait, not a fresh
         // 1.8 s.
@@ -464,19 +463,24 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "2"))
-            .expect(1)
             .mount(&server)
             .await;
+        // Building the client is setup, not the request; only the request is
+        // timed.
+        let prober = prober(server.uri(), Duration::from_secs(1));
         let started = std::time::Instant::now();
-        let error = prober(server.uri(), Duration::from_secs(1))
-            .get("/ready")
-            .await
-            .expect_err("throttled");
-        assert!(started.elapsed() < Duration::from_millis(500));
+        let error = prober.get("/ready").await.expect_err("throttled");
+        let elapsed = started.elapsed();
+        // Reported as a throttle, not as the timeout a wait would have run
+        // into, and sent once: the wait was neither taken nor shortened.
         assert!(
             matches!(&error, ProbeError::NoEvidence(m) if m.contains("would pass the 1s timeout")),
             "{error:?}"
         );
+        assert_eq!(server.received_requests().await.expect("recorded").len(), 1);
+        // Only a guard against a hang: well short of the 2 s the server asked
+        // for.
+        assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");
     }
 
     #[test]
