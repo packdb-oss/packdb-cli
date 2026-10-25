@@ -27,6 +27,7 @@
 #![deny(clippy::unreachable)]
 
 mod api;
+mod bundle;
 mod connection;
 mod doctor;
 mod environment;
@@ -37,6 +38,7 @@ mod probe;
 mod promql;
 mod render;
 mod report;
+mod secrets;
 mod smoke;
 mod sql;
 mod time;
@@ -45,6 +47,7 @@ mod traceql;
 
 use std::io::Write;
 
+pub use bundle::{BUNDLE_FORMAT, SupportBundleArgs};
 pub use connection::{ConnectionArgs, DEFAULT_ENDPOINT};
 pub use doctor::DoctorArgs;
 pub use environment::{Environment, ProcessEnvironment};
@@ -73,6 +76,8 @@ pub enum Command {
     Doctor(DoctorArgs),
     /// Write a small fixture and read this run's data back on every surface.
     SmokeTest(SmokeTestArgs),
+    /// Collect diagnostics into one archive for support, without credentials.
+    SupportBundle(SupportBundleArgs),
 }
 
 /// A query language.
@@ -110,5 +115,6 @@ pub async fn run(command: Command, io: Io<'_>) -> Exit {
         Command::Trace(args) => trace::run(args, io).await,
         Command::Doctor(args) => doctor::run(args, io).await,
         Command::SmokeTest(args) => smoke::run(args, io).await,
+        Command::SupportBundle(args) => bundle::run(args, io).await,
     }
 }
