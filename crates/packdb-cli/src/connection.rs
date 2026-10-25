@@ -22,7 +22,7 @@ use packdb_client::AuthConfig;
 use crate::environment::Environment;
 
 /// The endpoint used when neither `--endpoint` nor `PACKDB_ENDPOINT` is set.
-pub const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:4000";
+pub const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:8080";
 
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 const MAX_CREDENTIAL_BYTES: u64 = 64 * 1024;
@@ -34,7 +34,7 @@ const MAX_CREDENTIAL_BYTES: u64 = 64 * 1024;
 /// variables carry the value or a `_FILE` path.
 #[derive(Debug, Clone, Default, clap::Args)]
 pub struct ConnectionArgs {
-    /// Server URL [env: PACKDB_ENDPOINT] [default: http://127.0.0.1:4000]
+    /// Server URL [env: PACKDB_ENDPOINT] [default: http://127.0.0.1:8080]
     #[arg(long, value_name = "URL")]
     pub endpoint: Option<String>,
 
@@ -299,6 +299,8 @@ mod tests {
             .resolve(&FakeEnvironment::default())
             .expect("resolves");
         assert_eq!(connection.endpoint, DEFAULT_ENDPOINT);
+        // The PackDB server's default HTTP listener.
+        assert_eq!(DEFAULT_ENDPOINT, "http://127.0.0.1:8080");
         assert_eq!(connection.flight_endpoint, None);
         assert_eq!(connection.tenant, None);
         assert_eq!(connection.timeout, Duration::from_secs(30));

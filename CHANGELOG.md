@@ -12,6 +12,8 @@ this repository now provides; its 0.2.x archives are unchanged. See
   and `--basic-auth-file`, or `PACKDB_API_KEY`, `PACKDB_TOKEN`, `PACKDB_BASIC_AUTH`
   and their `_FILE` forms. Two credentials are refused instead of the first
   winning silently.
+- The default endpoint is `http://127.0.0.1:8080`, where the PackDB server's HTTP
+  listener binds by default; `packdb-query` defaulted to `http://localhost:4000`.
 - `--endpoint` / `PACKDB_ENDPOINT` replace `--url` / `PACKDB_URL`;
   `PACKDB_FLIGHT_ENDPOINT` replaces `PACKDB_FLIGHT_URL`; `--transport
   auto|http|flight-sql` replaces `--http-only`, and an explicit transport never
