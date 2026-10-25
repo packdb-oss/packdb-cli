@@ -562,6 +562,7 @@ mod tests {
     fn response(status: u16, body: Value, causes: &[&str]) -> ProbeResponse {
         ProbeResponse {
             status: http::StatusCode::from_u16(status).unwrap_or(http::StatusCode::IM_A_TEAPOT),
+            content_type: Some("application/json".into()),
             body: body.to_string().into_bytes(),
             partial_causes: causes.iter().map(|cause| (*cause).to_string()).collect(),
         }

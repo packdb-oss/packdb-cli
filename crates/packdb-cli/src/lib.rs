@@ -37,6 +37,7 @@ mod probe;
 mod promql;
 mod render;
 mod report;
+mod smoke;
 mod sql;
 mod time;
 mod trace;
@@ -52,6 +53,7 @@ pub use logql::{LogDirection, LogqlArgs};
 pub use output::{OperatorFormat, QueryFormat, SCHEMA_VERSION};
 pub use promql::PromqlArgs;
 pub use report::REPORT_SCHEMA_VERSION;
+pub use smoke::{FIXTURE_VERSION, SmokeTestArgs};
 pub use sql::{SqlArgs, TransportChoice};
 pub use trace::TraceArgs;
 pub use traceql::TraceqlArgs;
@@ -69,6 +71,8 @@ pub enum Command {
     Trace(TraceArgs),
     /// Check a running server through its HTTP surface.
     Doctor(DoctorArgs),
+    /// Write a small fixture and read this run's data back on every surface.
+    SmokeTest(SmokeTestArgs),
 }
 
 /// A query language.
@@ -105,5 +109,6 @@ pub async fn run(command: Command, io: Io<'_>) -> Exit {
         },
         Command::Trace(args) => trace::run(args, io).await,
         Command::Doctor(args) => doctor::run(args, io).await,
+        Command::SmokeTest(args) => smoke::run(args, io).await,
     }
 }

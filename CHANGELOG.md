@@ -43,6 +43,11 @@ this repository now provides; its 0.2.x archives are unchanged. See
   report stays incomplete and doctor exits `3`; checks the server's HTTP API does not
   expose are listed as `not_exposed`. It prints a text report or the JSON envelope
   with a `packdb.cli.diagnostics.v1` report.
+- `packdb smoke-test --allow-write` writes a small OTLP/JSON fixture marked with a
+  run-unique identifier and reads it back on PromQL, LogQL, TraceQL, trace lookup,
+  Jaeger and SQL until a visibility timeout, filtering every read on this run. Writes
+  are never retried, and an acknowledgement that does not decode as an OTLP export
+  response is never counted as zero rejected records.
 - Table and CSV columns of `query sql` keep the order in which the response lists
   them instead of being sorted by name. That order is what the client receives;
   it is not promised to match the `SELECT` list.
