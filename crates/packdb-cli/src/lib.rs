@@ -28,12 +28,15 @@
 
 mod api;
 mod connection;
+mod doctor;
 mod environment;
 mod exit;
 mod logql;
 mod output;
+mod probe;
 mod promql;
 mod render;
+mod report;
 mod sql;
 mod time;
 mod trace;
@@ -42,11 +45,13 @@ mod traceql;
 use std::io::Write;
 
 pub use connection::{ConnectionArgs, DEFAULT_ENDPOINT};
+pub use doctor::DoctorArgs;
 pub use environment::{Environment, ProcessEnvironment};
 pub use exit::Exit;
 pub use logql::{LogDirection, LogqlArgs};
-pub use output::{QueryFormat, SCHEMA_VERSION};
+pub use output::{OperatorFormat, QueryFormat, SCHEMA_VERSION};
 pub use promql::PromqlArgs;
+pub use report::REPORT_SCHEMA_VERSION;
 pub use sql::{SqlArgs, TransportChoice};
 pub use trace::TraceArgs;
 pub use traceql::TraceqlArgs;
@@ -62,6 +67,8 @@ pub enum Command {
     },
     /// Read one trace by its ID.
     Trace(TraceArgs),
+    /// Check a running server through its HTTP surface.
+    Doctor(DoctorArgs),
 }
 
 /// A query language.
@@ -97,5 +104,6 @@ pub async fn run(command: Command, io: Io<'_>) -> Exit {
             QueryCommand::Traceql(args) => traceql::run(args, io).await,
         },
         Command::Trace(args) => trace::run(args, io).await,
+        Command::Doctor(args) => doctor::run(args, io).await,
     }
 }

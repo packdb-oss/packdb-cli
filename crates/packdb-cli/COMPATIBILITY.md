@@ -22,6 +22,7 @@ packdb query promql <EXPR> [connection] [--time T | --start T --end T --step D] 
 packdb query logql <EXPR> [connection] [--time T | --start T --end T --step D] [--limit N] [--direction forward|backward] [--format table|json|csv]
 packdb query traceql <QUERY> [connection] [--start T] [--end T] [--limit N] [--format table|json|csv]
 packdb trace <TRACE_ID> [connection] [--start T --end T] [--format json]
+packdb doctor [connection] [--format text|json]
 ```
 
 `packdb` with no subcommand prints help to stderr and exits `2`; it never starts a
@@ -191,6 +192,70 @@ reports it has no part of (a `404` with the body `{"error": "trace not found: <i
 for the requested ID and no partial causes) is `1` with `error.kind` `not_found`; any
 other `404`, such as a missing route or a proxy's page, is `7`.
 
+### `doctor`
+
+`packdb doctor` runs limited diagnostics of a running server and prints a report: one
+line per check with `--format text` (the default), or the JSON envelope with the
+report under `data` with `--format json`.
+
+Doctor is meant to create no state on the server it examines. The server's
+`/health/detailed`, `/ready`, OTLP and query routes resolve the request's tenant, and
+several create the tenant's store on first use, so doctor does not call them. It sends
+`GET /info` and `GET /health/diagnostics`, the server's read-only health and
+readiness. In the open-source PackDB server neither handler creates tenant state; a
+build that adds middleware in front of them is not covered by that statement.
+
+Health and readiness from `/health/diagnostics` describe the server's own monitoring
+scope, not the tenant in the request. Its route list says which OTLP and query routes
+are registered; it does not show that ingestion or queries work, so the checks that
+would (`ingest.otlp_routes_mounted`, `query.surface_availability`) stay `withheld`
+until the server offers a way to prove them that creates nothing. The report is
+therefore always `incomplete`, and doctor exits `3` when nothing else applies. A
+server without `/health/diagnostics` (`404`) leaves health and readiness `withheld`
+too.
+
+Each check is one of `pass`, `warn`, `fail`, `error` (its evidence could not be
+collected), `withheld` (a required check deliberately not run) or `not_exposed` (the
+server's HTTP API gives no evidence for it). The last three are verdicts of unknown;
+none is ever reported as a pass. `error` and `withheld` checks are listed under
+`missing_evidence`.
+
+| check | outcome |
+| --- | --- |
+| `process.version` | `GET /info`: the server's name and version, with the environment it reports |
+| `process.health` (required) | `GET /health/diagnostics`: `healthy` passes, `degraded` warns, `unhealthy` fails; names the checks that are not healthy |
+| `process.ready` (required) | `GET /health/diagnostics`: ready passes, not ready fails; names the checks that are not ready |
+| `routes.registered` | `GET /health/diagnostics`: the OTLP and query routes the server reports as registered |
+| `ingest.otlp_routes_mounted`, `query.surface_availability` (required) | `withheld` |
+| `process.build_match`, `durability.ages`, `durability.recovery_state`, `storage.tiers_attached`, `ingest.rejection_ratio`, `ingest.backpressure`, `limits.query_pool`, `limits.admission`, `limits.cardinality` | `not_exposed` |
+
+- An answer counts as evidence only when it is a complete, unredirected `200` of at
+  most 8 MiB in the route's documented shape: `/info` with the service's `name` and
+  `version`; `/health/diagnostics` with `schema_version`
+  `packdb.server.diagnostics.v1`, `health`, `readiness` and `routes`. Anything else is `error` and listed
+  under `missing_evidence` with its reason, also printed on stderr as
+  `note: missing ...`.
+- One deadline, `--timeout` from the first attempt, covers every attempt, wait and
+  body of each request; each attempt gets only the time that remains. A `429` is
+  retried at most twice, after `Retry-After` seconds or 250 ms when none is given,
+  and only when that wait is at most 2 s and ends before the deadline. A longer wait,
+  or an HTTP-date `Retry-After`, is reported as a throttle without retrying. Nothing
+  else is retried.
+- Exit: `1` when a required check fails; `3` while any required check is withheld or
+  its evidence is missing; `4` or `5` when the server refuses the credential; `6`
+  when the server sends no response to any of doctor's requests. Once it has sent
+  any response, even a refusal, throttle or redirect, a later request it does not
+  answer is missing evidence (`3`), and the envelope's `transport.used` stays
+  `http`. The precedence above applies. The envelope's
+  `completeness` is `unknown`; the report's is `incomplete`. stderr always carries
+  `warning: completeness unknown (limited diagnostics: ...)`.
+- The report (`schema_version` `packdb.cli.diagnostics.v1`) holds `report_kind`,
+  `started_at`, `finished_at`, `tool`, `target` (the endpoint without user
+  information, whether a tenant was supplied, and the server's environment),
+  `requested_scope` (`diagnostics`: `limited`), `completeness`, `counts`, `findings`
+  (`id`, `status`, `severity` `required` or `info`, `summary`, `evidence`) and
+  `missing_evidence` (`evidence`, `reason`).
+
 ## Not promised
 
 - **Exact table layout.** Parse `json` or `csv` instead.
@@ -198,6 +263,8 @@ other `404`, such as a missing route or a proxy's page, is `7`.
 - **`--help` and `--version` formatting.**
 - **Ordering of result rows**, unless the query orders them.
 - **Column order of `query sql` table and CSV output.**
+- **`doctor` summaries and evidence values**, beyond the check identifiers, statuses
+  and severities listed above.
 - **JSON key order and whitespace.**
 
 ## Migrating from `packdb-query`
@@ -233,10 +300,17 @@ other `404`, such as a missing route or a proxy's page, is `7`.
   tenant), table and CSV columns, completeness for each command, the found and
   missing trace, server warnings and infos, malformed answers in every format, each
   exit code, and usage errors that send nothing.
+- `crates/packdb-cli/tests/doctor.rs` and the `probe` and `report` unit tests:
+  `doctor` through `run()` against a mock server, sending only `GET /info` and
+  `GET /health/diagnostics` with the credential and tenant, health and readiness from
+  the diagnostics route (healthy, degraded, unhealthy, not ready, absent, unusable), withheld and not-exposed checks keeping the report
+  incomplete, unusable `/info` answers (wrong shape, partial, redirect, throttle),
+  `401` and `403`, an unreachable or silent server, one deadline across retries,
+  and a long `Retry-After` reported without retrying.
 - `crates/packdb-cli-test-harness/tests/process.rs`: the same contract as a process
   sees it, covering help, the refused secret argument, stdout/stderr separation,
-  exit codes, credential files, conflicts, a closed stdout (exit `8`), and the
-  PromQL, trace and time-argument cases.
+  exit codes, credential files, conflicts, a closed stdout (exit `8`), the PromQL,
+  trace and time-argument cases, and `doctor`.
 - `packdb-client`'s own tests cover the transport fallback rules, the query API
   requests and error classification.
 

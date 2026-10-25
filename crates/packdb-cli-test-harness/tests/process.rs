@@ -408,3 +408,29 @@ async fn conflicting_or_incomplete_time_arguments_exit_2() {
         assert!(output.stdout.is_empty(), "{args:?}");
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn doctor_is_listed_refuses_csv_and_exits_6_when_unreachable() {
+    let help = harness(&["--help"], &[]).await;
+    assert!(
+        text(&help.stdout).contains("doctor"),
+        "{}",
+        text(&help.stdout)
+    );
+    let csv = harness(&["doctor", "--format", "csv"], &[]).await;
+    assert_eq!(csv.status.code(), Some(2));
+    assert!(csv.stdout.is_empty());
+    let refusing = refusing_endpoint();
+    let output = harness(&["doctor"], &[("PACKDB_ENDPOINT", &refusing.endpoint)]).await;
+    assert_eq!(output.status.code(), Some(6), "{}", text(&output.stderr));
+    assert!(
+        text(&output.stdout).starts_with("packdb doctor (limited diagnostics): "),
+        "{}",
+        text(&output.stdout)
+    );
+    assert!(
+        text(&output.stderr).contains("error: /info: cannot connect"),
+        "{}",
+        text(&output.stderr)
+    );
+}
