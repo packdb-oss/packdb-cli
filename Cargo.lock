@@ -1619,9 +1619,11 @@ dependencies = [
  "http",
  "humantime",
  "packdb-client",
+ "prost",
  "reqwest",
  "serde_json",
  "tokio",
+ "uuid",
  "wiremock",
 ]
 

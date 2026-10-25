@@ -20,7 +20,8 @@
 //! all — a rejected credential, a throttle, a redirect, a timeout or an
 //! oversized body — because none of those is evidence about the surface.
 //!
-//! Only `GET` is offered. One deadline, the request timeout measured from the
+//! Reads are `GET`; the only write is [`Prober::post_json_once`], which is
+//! sent exactly once and never retried. One deadline, the request timeout measured from the
 //! first attempt, covers every attempt, every wait and the body: each attempt
 //! is given only the time that remains. A read throttled with `429` is sent
 //! again at most twice, and only when the wait the server asks for is short
@@ -40,6 +41,10 @@ use crate::exit::Exit;
 /// The most of a response body a probe will hold. Enforced while streaming:
 /// `Content-Length` is a claim, not a bound.
 const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+
+/// The most of a write acknowledgement a probe will hold. An acknowledgement
+/// is a small protobuf; nothing legitimate approaches this.
+const MAX_ACK_BYTES: usize = 256 * 1024;
 
 /// How many times a throttled read is sent again before it is reported.
 const RETRY_ATTEMPTS: u32 = 2;
@@ -90,6 +95,7 @@ impl ProbeError {
 #[derive(Debug)]
 pub(crate) struct ProbeResponse {
     pub(crate) status: StatusCode,
+    pub(crate) content_type: Option<String>,
     pub(crate) body: Vec<u8>,
     pub(crate) partial_causes: Vec<String>,
 }
@@ -165,7 +171,9 @@ impl Prober {
             if remaining.is_zero() {
                 return Err(self.timed_out(path));
             }
-            let response = self.send(path, remaining).await?;
+            let response = self
+                .send(reqwest::Method::GET, path, None, remaining)
+                .await?;
             attempts += 1;
             if response.status() != StatusCode::TOO_MANY_REQUESTS {
                 break response;
@@ -180,7 +188,7 @@ impl Prober {
                 Err(asked) => {
                     return Err(ProbeError::NoEvidence(format!(
                         "{path}: throttled (429); the server asked to wait {asked}, \
-                         longer than doctor waits"
+                         longer than packdb waits"
                     )));
                 }
             };
@@ -193,6 +201,40 @@ impl Prober {
             }
             tokio::time::sleep(wait).await;
         };
+        self.answer(path, response, MAX_RESPONSE_BYTES).await
+    }
+
+    /// `POST path` with a JSON body, sent exactly once within the request
+    /// timeout. A write is never retried, not even after a `429`.
+    pub(crate) async fn post_json_once(
+        &self,
+        path: &str,
+        body: Vec<u8>,
+    ) -> Result<ProbeResponse, ProbeError> {
+        let write = async {
+            let response = self
+                .send(reqwest::Method::POST, path, Some(body), self.timeout)
+                .await?;
+            if response.status() == StatusCode::TOO_MANY_REQUESTS {
+                return Err(ProbeError::NoEvidence(format!(
+                    "{path}: throttled (429); a write is not retried"
+                )));
+            }
+            self.answer(path, response, MAX_ACK_BYTES).await
+        };
+        match tokio::time::timeout(self.timeout, write).await {
+            Ok(result) => result,
+            Err(_) => Err(self.timed_out(path)),
+        }
+    }
+
+    /// Classify an answer that arrived, then read its body under `max_bytes`.
+    async fn answer(
+        &self,
+        path: &str,
+        response: reqwest::Response,
+        max_bytes: usize,
+    ) -> Result<ProbeResponse, ProbeError> {
         let status = response.status();
         match status.as_u16() {
             401 => {
@@ -224,9 +266,15 @@ impl Prober {
             )));
         }
         let partial_causes = packdb_client::partial_causes_of(response.headers());
-        let body = self.bounded_body(path, response).await?;
+        let content_type = response
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        let body = self.bounded_body(path, response, max_bytes).await?;
         Ok(ProbeResponse {
             status,
+            content_type,
             body,
             partial_causes,
         })
@@ -240,7 +288,13 @@ impl Prober {
     }
 
     /// One attempt, allowed `remaining` from connecting to the end of its body.
-    async fn send(&self, path: &str, remaining: Duration) -> Result<reqwest::Response, ProbeError> {
+    async fn send(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<Vec<u8>>,
+        remaining: Duration,
+    ) -> Result<reqwest::Response, ProbeError> {
         let mut headers = HeaderMap::new();
         if let Some(tenant) = &self.tenant {
             headers.insert("x-scope-orgid", tenant.clone());
@@ -248,10 +302,21 @@ impl Prober {
         self.auth.apply(&mut headers).await.map_err(|error| {
             ProbeError::NoEvidence(format!("the credential could not be applied: {error}"))
         })?;
-        self.client
-            .get(format!("{}{path}", self.base))
+        if body.is_some() {
+            headers.insert(
+                http::header::CONTENT_TYPE,
+                HeaderValue::from_static("application/json"),
+            );
+        }
+        let mut request = self
+            .client
+            .request(method, format!("{}{path}", self.base))
             .timeout(remaining)
-            .headers(headers)
+            .headers(headers);
+        if let Some(body) = body {
+            request = request.body(body);
+        }
+        request
             .send()
             .await
             .inspect(|_| self.responded.store(true, Ordering::Relaxed))
@@ -262,6 +327,7 @@ impl Prober {
         &self,
         path: &str,
         mut response: reqwest::Response,
+        max_bytes: usize,
     ) -> Result<Vec<u8>, ProbeError> {
         let mut body = Vec::new();
         while let Some(chunk) = response
@@ -271,9 +337,9 @@ impl Prober {
         {
             // Checked before appending: a truncated document could parse into
             // a smaller, cleaner-looking answer.
-            if body.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
+            if body.len().saturating_add(chunk.len()) > max_bytes {
                 return Err(ProbeError::NoEvidence(format!(
-                    "{path}: answered with more than {MAX_RESPONSE_BYTES} bytes"
+                    "{path}: answered with more than {max_bytes} bytes"
                 )));
             }
             body.extend_from_slice(&chunk);
