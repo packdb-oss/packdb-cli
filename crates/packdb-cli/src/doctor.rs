@@ -125,6 +125,8 @@ pub(crate) async fn run(args: DoctorArgs, io: Io<'_>) -> Exit {
 struct Doctor {
     report: Report,
     failures: Vec<ProbeError>,
+    /// Whether the server answered any request.
+    answered: bool,
 }
 
 impl Doctor {
@@ -140,19 +142,16 @@ impl Doctor {
         Doctor {
             report,
             failures: Vec::new(),
+            answered: false,
         }
     }
 
     async fn check(&mut self, prober: &Prober) {
         const ID: &str = "process.version";
-        let info = match prober.get("/info").await {
-            Ok(response) => read_info(&response),
-            Err(error) => {
-                let message = error.message().to_string();
-                self.failures.push(error);
-                Err(message)
-            }
-        };
+        let info = self
+            .get(prober, "/info")
+            .await
+            .and_then(|response| read_info(&response));
         match info {
             Ok(info) => {
                 if let Some(environment) = &info.environment {
@@ -193,14 +192,10 @@ impl Doctor {
 
     /// Health, readiness and registered routes from `/health/diagnostics`.
     async fn diagnostics(&mut self, prober: &Prober) {
-        let unreachable = self
-            .failures
-            .iter()
-            .any(|failure| matches!(failure, ProbeError::Unreachable(_)));
-        let read = if unreachable {
+        let read = if !self.answered && self.unreachable() {
             Err("/health/diagnostics was not requested: the server did not answer /info".into())
         } else {
-            match prober.get("/health/diagnostics").await {
+            match self.get(prober, "/health/diagnostics").await {
                 Ok(response)
                     if response.status == http::StatusCode::NOT_FOUND
                         && response.partial_causes.is_empty() =>
@@ -214,11 +209,7 @@ impl Doctor {
                     return;
                 }
                 Ok(response) => read_diagnostics(&response),
-                Err(error) => {
-                    let message = error.message().to_string();
-                    self.failures.push(error);
-                    Err(message)
-                }
+                Err(message) => Err(message),
             }
         };
         let diagnostics = match read {
@@ -312,9 +303,33 @@ impl Doctor {
         });
     }
 
+    /// `GET path`: the answer, or the failure recorded and its message.
+    async fn get(&mut self, prober: &Prober, path: &str) -> Result<ProbeResponse, String> {
+        match prober.get(path).await {
+            Ok(response) => {
+                self.answered = true;
+                Ok(response)
+            }
+            Err(error) => {
+                let message = error.message().to_string();
+                self.failures.push(error);
+                Err(message)
+            }
+        }
+    }
+
+    fn unreachable(&self) -> bool {
+        self.failures
+            .iter()
+            .any(|failure| matches!(failure, ProbeError::Unreachable(_)))
+    }
+
+    /// A server that answered any request was reached: a later request it
+    /// did not answer is missing evidence, not an unreachable server.
     fn exit(&self) -> Exit {
         self.failures
             .iter()
+            .filter(|failure| !(self.answered && matches!(failure, ProbeError::Unreachable(_))))
             .fold(self.report.exit(), |exit, failure| {
                 exit.worst(failure.exit())
             })
@@ -348,16 +363,12 @@ impl Doctor {
             .find(|failure| failure.exit() != Exit::Incomplete && failure.exit() == exit);
         match format {
             OperatorFormat::Json => {
-                let answered = !self
-                    .failures
-                    .iter()
-                    .any(|failure| matches!(failure, ProbeError::Unreachable(_)));
                 let envelope = Envelope {
                     command: "doctor",
                     endpoint: endpoint.to_string(),
                     transport: TransportReport {
                         requested: "http",
-                        used: answered.then_some("http"),
+                        used: self.answered.then_some("http"),
                         fallback_reason: None,
                     },
                     completeness: Some(self.report.completeness()),

@@ -462,3 +462,32 @@ async fn an_unusable_diagnostics_answer_is_missing_evidence() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_diagnostics_timeout_after_info_answered_is_missing_evidence() {
+    let server = diagnosable(diagnostics("healthy", true).set_delay(Duration::from_secs(3))).await;
+    let outcome = doctor(
+        ConnectionArgs {
+            timeout: Some(1),
+            ..at(&server.uri())
+        },
+        OperatorFormat::Json,
+        Env::default(),
+    )
+    .await;
+    // The server answered /info, so it was reached: the unanswered diagnostics
+    // read is missing evidence (3), not an unreachable server (6).
+    assert_eq!(outcome.exit, Exit::Incomplete, "{}", outcome.stderr);
+    let envelope = outcome.envelope();
+    assert_eq!(envelope["transport"]["used"], "http");
+    assert_eq!(envelope["error"], Value::Null);
+    assert_eq!(outcome.finding("process.version")["status"], "pass");
+    for id in ["process.health", "process.ready"] {
+        assert_eq!(outcome.finding(id)["status"], "error", "{id}");
+    }
+    assert!(
+        outcome.stderr.contains("no answer within 1s"),
+        "{}",
+        outcome.stderr
+    );
+}
