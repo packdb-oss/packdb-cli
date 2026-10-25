@@ -16,7 +16,9 @@
 //!
 //! A scan names only the class of what it found, never the text, so a report
 //! about a secret cannot leak it. It looks for credential-shaped text and for
-//! the exact credential this run was configured with.
+//! the exact credential this run was configured with, whatever its length: in
+//! the raw bytes, in its JSON-escaped form, and in every string of a JSON
+//! document once decoded, so no escaping hides it.
 
 use packdb_client::{AuthConfig, AuthMethod};
 use regex::Regex;
@@ -43,10 +45,6 @@ const PATTERNS: [(&str, &str); 7] = [
     ),
     ("aws_access_key_id", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
 ];
-
-/// Values shorter than this are not matched literally: they would match
-/// ordinary text by chance.
-const MIN_LITERAL: usize = 4;
 
 pub(crate) struct SecretScanner {
     patterns: Vec<(&'static str, Regex)>,
@@ -76,7 +74,7 @@ impl SecretScanner {
             patterns,
             literals: literals
                 .into_iter()
-                .filter(|literal| literal.len() >= MIN_LITERAL)
+                .filter(|literal| !literal.is_empty())
                 .collect(),
         })
     }
@@ -84,17 +82,52 @@ impl SecretScanner {
     /// The class of the first secret in `bytes`, if any.
     pub(crate) fn scan(&self, bytes: &[u8]) -> Option<&'static str> {
         let text = String::from_utf8_lossy(bytes);
-        if self
-            .literals
-            .iter()
-            .any(|literal| text.contains(literal.as_str()))
-        {
+        if let Some(class) = self.scan_text(&text) {
+            return Some(class);
+        }
+        // A JSON document is also read as the strings it decodes to, so an
+        // escaped secret is found as the secret.
+        let mut strings = Vec::new();
+        if let Ok(document) = serde_json::from_slice::<serde_json::Value>(bytes) {
+            collect_strings(&document, &mut strings);
+        }
+        strings.iter().find_map(|string| self.scan_text(string))
+    }
+
+    fn scan_text(&self, text: &str) -> Option<&'static str> {
+        let configured = self.literals.iter().any(|literal| {
+            text.contains(literal.as_str()) || {
+                let escaped = serde_json::to_string(literal).unwrap_or_default();
+                let escaped = escaped.trim_matches('"');
+                !escaped.is_empty() && text.contains(escaped)
+            }
+        });
+        if configured {
             return Some("configured_credential");
         }
         self.patterns
             .iter()
-            .find(|(_, regex)| regex.is_match(&text))
+            .find(|(_, regex)| regex.is_match(text))
             .map(|(class, _)| *class)
+    }
+}
+
+/// Every key and string value in a JSON document.
+fn collect_strings(value: &serde_json::Value, strings: &mut Vec<String>) {
+    match value {
+        serde_json::Value::String(string) => strings.push(string.clone()),
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_strings(item, strings);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (key, item) in map {
+                strings.push(key.clone());
+                collect_strings(item, strings);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -160,8 +193,30 @@ mod tests {
             basic.scan(b"the password opensesame leaked"),
             Some("configured_credential")
         );
-        // A credential too short to match safely is left to the patterns.
-        let short = scanner(AuthConfig::api_key("abc".into()));
-        assert_eq!(short.scan(b"abc"), None);
+        // However short, the configured credential is found; it can withhold
+        // more than it needs to, never less.
+        let short = scanner(AuthConfig::api_key("k3".into()));
+        assert_eq!(
+            short.scan(b"{\"v\": \"xk3x\"}"),
+            Some("configured_credential")
+        );
+    }
+
+    #[test]
+    fn an_escaped_credential_is_found_as_the_credential() {
+        let quoted = scanner(AuthConfig::api_key(r#"pa"ss\word"#.into()));
+        // As a JSON encoder writes it.
+        let body = serde_json::to_vec(&serde_json::json!({"echo": r#"pa"ss\word"#})).expect("json");
+        assert!(!String::from_utf8_lossy(&body).contains(r#"pa"ss\word"#));
+        assert_eq!(quoted.scan(&body), Some("configured_credential"));
+        // Every character escaped as \u: only decoding finds it.
+        let unicode = scanner(AuthConfig::api_key("key-1".into()));
+        let escaped = br#"{"echo": "\u006b\u0065\u0079\u002d\u0031"}"#;
+        assert_eq!(unicode.scan(escaped), Some("configured_credential"));
+        // A credential used as a key is found too.
+        assert_eq!(
+            unicode.scan(br#"{"key-1": 1}"#),
+            Some("configured_credential")
+        );
     }
 }

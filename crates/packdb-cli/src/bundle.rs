@@ -41,7 +41,6 @@ use crate::probe::{ProbeError, Prober};
 use crate::render::{Rendered, deliver};
 use crate::report::{Finding, MissingEvidence, Report, Severity, Status};
 use crate::secrets::SecretScanner;
-use crate::tarball;
 
 /// The bundle's format, recorded in its manifest.
 pub const BUNDLE_FORMAT: &str = "packdb.cli.support-bundle.v1";
@@ -324,9 +323,11 @@ fn client_environment(env: &dyn Environment, connection: &crate::connection::Con
     })
 }
 
-/// Build, write and verify the archive. It goes to a temporary file beside
-/// `output`, is read back and checked against its manifest, and is then linked
-/// to `output`, which fails rather than replace a file that appeared since.
+/// Build, write and verify the archive. It goes to a new temporary file beside
+/// `output` (a random name, readable only by its owner), is read back and
+/// checked against what was staged, and is then moved to `output` without
+/// replacing a file that appeared since. Only that temporary file is ever
+/// removed, and it is removed whenever the move does not happen.
 fn write_bundle(
     report: &Report,
     files: &[(String, Vec<u8>)],
@@ -364,7 +365,7 @@ fn write_bundle(
         ("checksums.sha256".to_string(), checksums.into_bytes()),
     ];
     entries.extend(files.iter().cloned());
-    let tar = tarball::write(&entries)?;
+    let tar = tar_entries(&entries)?;
     let archive = zstd::encode_all(tar.as_slice(), 3)
         .map_err(|error| format!("compression failed: {error}"))?;
 
@@ -372,18 +373,25 @@ fn write_bundle(
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
-    let name = output
-        .file_name()
-        .ok_or_else(|| format!("{} is not a file path", output.display()))?;
-    let temporary = directory.join(format!(
-        ".{}.partial-{}",
-        name.to_string_lossy(),
-        std::process::id()
-    ));
-    let result = write_and_link(&temporary, output, &archive, &entries);
-    // Whatever happened, the temporary file does not stay behind.
-    let _ = std::fs::remove_file(&temporary);
-    result?;
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".packdb-support-bundle-")
+        .suffix(".partial")
+        .tempfile_in(directory)
+        .map_err(|error| format!("cannot create a file in {}: {error}", directory.display()))?;
+    temporary
+        .write_all(&archive)
+        .and_then(|()| temporary.as_file().sync_all())
+        .map_err(|error| format!("cannot write the archive: {error}"))?;
+    let read = std::fs::read(temporary.path())
+        .map_err(|error| format!("cannot read the archive back: {error}"))?;
+    let unpacked = zstd::decode_all(read.as_slice())
+        .map_err(|error| format!("the written archive does not decompress: {error}"))?;
+    if untar(&unpacked)? != entries {
+        return Err("the written archive does not match what was staged".into());
+    }
+    temporary
+        .persist_noclobber(output)
+        .map_err(|error| format!("cannot create {}: {}", output.display(), error.error))?;
     Ok(Written {
         path: output.to_path_buf(),
         bytes: archive.len(),
@@ -391,30 +399,48 @@ fn write_bundle(
     })
 }
 
-fn write_and_link(
-    temporary: &Path,
-    output: &Path,
-    archive: &[u8],
-    entries: &[(String, Vec<u8>)],
-) -> Result<(), String> {
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(temporary)
-        .map_err(|error| format!("cannot create {}: {error}", temporary.display()))?;
-    file.write_all(archive)
-        .and_then(|()| file.sync_all())
-        .map_err(|error| format!("cannot write {}: {error}", temporary.display()))?;
-    drop(file);
-    let read = std::fs::read(temporary)
-        .map_err(|error| format!("cannot read back {}: {error}", temporary.display()))?;
-    let unpacked = zstd::decode_all(read.as_slice())
-        .map_err(|error| format!("the written archive does not decompress: {error}"))?;
-    if tarball::read(&unpacked)? != entries {
-        return Err("the written archive does not match what was staged".into());
+/// A tar of `entries` in order, with fixed mode, owner and time, so the same
+/// contents always produce the same bytes.
+fn tar_entries(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
+    let mut builder = tar::Builder::new(Vec::new());
+    for (name, data) in entries {
+        let mut header = tar::Header::new_ustar();
+        header.set_size(data.len() as u64);
+        header.set_mode(0o644);
+        header.set_uid(0);
+        header.set_gid(0);
+        header.set_mtime(0);
+        header.set_entry_type(tar::EntryType::Regular);
+        builder
+            .append_data(&mut header, name, data.as_slice())
+            .map_err(|error| format!("cannot add {name} to the archive: {error}"))?;
     }
-    std::fs::hard_link(temporary, output)
-        .map_err(|error| format!("cannot create {}: {error}", output.display()))
+    builder
+        .into_inner()
+        .map_err(|error| format!("cannot finish the archive: {error}"))
+}
+
+/// The entries of a tar, in order.
+fn untar(tar: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let mut archive = tar::Archive::new(tar);
+    let mut entries = Vec::new();
+    for entry in archive
+        .entries()
+        .map_err(|error| format!("the archive does not read back: {error}"))?
+    {
+        let mut entry =
+            entry.map_err(|error| format!("the archive does not read back: {error}"))?;
+        let name = entry
+            .path()
+            .map_err(|error| format!("an archive entry has no path: {error}"))?
+            .to_string_lossy()
+            .into_owned();
+        let mut data = Vec::new();
+        std::io::Read::read_to_end(&mut entry, &mut data)
+            .map_err(|error| format!("{name} does not read back: {error}"))?;
+        entries.push((name, data));
+    }
+    Ok(entries)
 }
 
 fn probe_error_kind(error: &ProbeError) -> &'static str {
@@ -518,8 +544,7 @@ mod tests {
         let written = write_bundle(&report, &files, &output, &scanner).expect("written");
         let archive = std::fs::read(&output).expect("read");
         assert_eq!(written.sha256, sha256(&archive));
-        let entries =
-            tarball::read(&zstd::decode_all(archive.as_slice()).expect("zstd")).expect("tar");
+        let entries = untar(&zstd::decode_all(archive.as_slice()).expect("zstd")).expect("tar");
         let names: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
         assert_eq!(
             names,
@@ -537,9 +562,77 @@ mod tests {
         let leftovers = std::fs::read_dir(&dir)
             .expect("list")
             .filter_map(Result::ok)
-            .filter(|entry| entry.file_name().to_string_lossy().contains(".partial-"))
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".partial"))
             .count();
         assert_eq!(leftovers, 0);
+        std::fs::remove_dir_all(&dir).expect("clean up");
+    }
+
+    #[test]
+    fn the_tar_is_deterministic_and_reads_back() {
+        let entries = vec![
+            ("manifest.json".to_string(), b"{}".to_vec()),
+            ("server/info.json".to_string(), vec![b'x'; 513]),
+            ("empty".to_string(), Vec::new()),
+        ];
+        let tar = tar_entries(&entries).expect("tar");
+        assert_eq!(tar_entries(&entries).expect("again"), tar, "deterministic");
+        assert_eq!(untar(&tar).expect("read"), entries);
+        let path =
+            std::env::temp_dir().join(format!("packdb-bundle-tar-{}.tar", std::process::id()));
+        std::fs::write(&path, &tar).expect("write");
+        let listed = std::process::Command::new("tar")
+            .arg("-tf")
+            .arg(&path)
+            .output();
+        std::fs::remove_file(&path).expect("remove");
+        if let Ok(listed) = listed {
+            assert!(listed.status.success(), "{listed:?}");
+            let names = String::from_utf8(listed.stdout).expect("utf-8");
+            assert_eq!(
+                names.lines().collect::<Vec<_>>(),
+                ["manifest.json", "server/info.json", "empty"]
+            );
+        }
+    }
+
+    #[test]
+    fn a_failed_write_never_removes_a_file_it_did_not_create() {
+        let dir =
+            std::env::temp_dir().join(format!("packdb-bundle-foreign-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let output = dir.join("bundle.tar.zst");
+        std::fs::write(&output, b"someone else's bundle").expect("existing output");
+        let foreign = dir.join(".packdb-support-bundle-foreign.partial");
+        std::fs::write(&foreign, b"someone else's file").expect("foreign file");
+        // The predictable name an earlier version wrote to, and removed even
+        // when it had not created it.
+        let predictable = dir.join(format!(".bundle.tar.zst.partial-{}", std::process::id()));
+        std::fs::write(&predictable, b"someone else's file").expect("predictable file");
+        let scanner = SecretScanner::new(&packdb_client::AuthConfig::none()).expect("scanner");
+        let refused = write_bundle(&Report::new("support_bundle"), &[], &output, &scanner);
+        assert!(refused.is_err());
+        assert_eq!(
+            std::fs::read(&output).expect("output"),
+            b"someone else's bundle"
+        );
+        assert_eq!(
+            std::fs::read(&foreign).expect("foreign"),
+            b"someone else's file"
+        );
+        assert_eq!(
+            std::fs::read(&predictable).expect("predictable"),
+            b"someone else's file"
+        );
+        let ours = std::fs::read_dir(&dir)
+            .expect("list")
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                name.ends_with(".partial") && !name.contains("foreign")
+            })
+            .count();
+        assert_eq!(ours, 0, "this run's temporary file is gone");
         std::fs::remove_dir_all(&dir).expect("clean up");
     }
 

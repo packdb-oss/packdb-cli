@@ -42,10 +42,10 @@ impl Environment for Env {
     }
 }
 
-fn env() -> Env {
+fn env(key: &str) -> Env {
     Env(HashMap::from([(
         "PACKDB_API_KEY".to_string(),
-        API_KEY.to_string(),
+        key.to_string(),
     )]))
 }
 
@@ -78,6 +78,10 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 async fn bundle(endpoint: &str, output: &Path) -> Outcome {
+    bundle_with_key(endpoint, output, API_KEY).await
+}
+
+async fn bundle_with_key(endpoint: &str, output: &Path, key: &str) -> Outcome {
     let command = Command::SupportBundle(SupportBundleArgs {
         connection: ConnectionArgs {
             endpoint: Some(endpoint.into()),
@@ -92,7 +96,7 @@ async fn bundle(endpoint: &str, output: &Path) -> Outcome {
         Io {
             stdout: &mut stdout,
             stderr: &mut stderr,
-            env: &env(),
+            env: &env(key),
         },
     )
     .await;
@@ -257,4 +261,36 @@ async fn an_unwritable_destination_exits_8() {
     assert_eq!(outcome.exit, Exit::OutputFailed, "{}", outcome.stderr);
     assert_eq!(outcome.status("bundle.archive"), "error");
     std::fs::remove_dir_all(&dir).expect("clean up");
+}
+
+#[tokio::test]
+async fn a_short_or_escaped_credential_never_reaches_the_archive() {
+    for key in ["k3y", r#"q"u\o-te"#] {
+        let mut diagnostics_body = diagnostics();
+        diagnostics_body["health"]["checks"][0]["message"] = json!(format!("echo {key} echo"));
+        let server = server(
+            json!({"name": "packdb", "version": "0.2.0"}),
+            diagnostics_body,
+        )
+        .await;
+        let dir = scratch("escaped");
+        let output = dir.join("b.tar.zst");
+        let outcome = bundle_with_key(&server.uri(), &output, key).await;
+        assert_eq!(
+            outcome.status("bundle.server_diagnostics"),
+            "withheld",
+            "{key}"
+        );
+        assert_eq!(outcome.status("bundle.archive"), "pass", "{key}");
+        let tar = unpacked(&output);
+        let escaped = serde_json::to_string(key).expect("json");
+        for form in [key, escaped.trim_matches('"')] {
+            assert!(
+                !tar.windows(form.len())
+                    .any(|window| window == form.as_bytes()),
+                "{form} reached the archive"
+            );
+        }
+        std::fs::remove_dir_all(&dir).expect("clean up");
+    }
 }

@@ -321,15 +321,18 @@ tenant state — and writes `--output` (default
 - **No secrets:** every file is scanned before it is written for private keys, JWTs,
   `Authorization` headers, bearer tokens, password, secret, token and key
   assignments, URL user information, AWS access key IDs, and the exact credential the
-  connection uses. A file that matches is left out and reported `withheld`, naming the
+  connection uses — at any length, as written, JSON-escaped, and inside every decoded
+  key and string of a JSON file. A short credential can withhold more than it needs
+  to, never less. A file that matches is left out and reported `withheld`, naming the
   class found but never the text; if the manifest or checksums would match, no
   archive is written.
 - **Bounds:** each server answer is read to at most 8 MiB, the files together to at
   most 32 MiB.
 - **Writing:** a deterministic tar (fixed modes, owners and times) compressed with
-  zstd, written to a temporary file beside the destination, read back and checked
-  against its manifest, then linked into place. An existing file is never replaced:
-  if `--output` exists, the command exits `2` before sending anything.
+  zstd, written to a new temporary file beside the destination (a random name,
+  readable only by its owner), read back and checked against what was staged, then
+  moved into place without replacing anything. Only that temporary file is ever
+  removed. If `--output` exists, the command exits `2` before sending anything.
 - Exit: `3` while any required file is missing or withheld or the included doctor
   report is incomplete (it is, while doctor withholds checks); `4` or `5` when the
   server refuses the credential; `6` when the server sends no response, in which case
@@ -394,12 +397,14 @@ tenant state — and writes `--output` (default
   or trace ID; rejected, malformed, unrecognized and mislabelled acknowledgements; a
   `429` write not retried; a refused credential stopping the writes; an unreachable
   server; data that never appears failing at the timeout.
-- `crates/packdb-cli/tests/bundle.rs` and the `bundle`, `secrets` and `tarball` unit
-  tests: a bundle holding the server's answers but never the credential; a server
-  answer carrying the credential or a private key left out; an existing output refused
-  before anything is sent; an unreachable server still bundled (exit `6`); an
-  unwritable destination (exit `8`); every secret class; a manifest that would carry
-  the credential writing nothing; the tar container read back by the system `tar`.
+- `crates/packdb-cli/tests/bundle.rs` and the `bundle` and `secrets` unit tests: a
+  bundle holding the server's answers but never the credential; a server answer
+  carrying the credential, a short or JSON-escaped credential, or a private key left
+  out of the archive; an existing output refused before anything is sent; an
+  unreachable server still bundled (exit `6`); an unwritable destination (exit `8`);
+  every secret class; a manifest that would carry the credential writing nothing; a
+  failed write leaving other files, including look-alike temporary names, untouched;
+  a deterministic tar read back by the system `tar`.
 - `crates/packdb-cli-test-harness/tests/process.rs`: the same contract as a process
   sees it, covering help, the refused secret argument, stdout/stderr separation,
   exit codes, credential files, conflicts, a closed stdout (exit `8`), the PromQL,

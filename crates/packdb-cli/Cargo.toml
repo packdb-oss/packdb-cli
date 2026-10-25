@@ -30,6 +30,9 @@ reqwest = "0.13"
 # The support bundle's secret scan.
 regex = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
+# The support bundle's archive container and its temporary file.
+tar = { version = "0.4", default-features = false }
+tempfile = "3"
 tokio = { version = "1.49", features = ["macros", "time"] }
 # The `smoke-test` run marker and trace and span identifiers.
 uuid = { version = "1", features = ["v4"] }

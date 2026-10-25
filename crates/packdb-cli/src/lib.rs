@@ -41,7 +41,6 @@ mod report;
 mod secrets;
 mod smoke;
 mod sql;
-mod tarball;
 mod time;
 mod trace;
 mod traceql;
