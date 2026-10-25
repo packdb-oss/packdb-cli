@@ -415,3 +415,84 @@ async fn data_that_never_appears_fails_at_the_visibility_timeout() {
     assert_eq!(outcome.status("read.promql.counter"), "fail");
     assert_eq!(outcome.status("write.metrics"), "pass");
 }
+
+#[tokio::test]
+async fn a_refused_read_is_kept_while_another_read_retries() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/query"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    // Not visible on the first poll, then this run's two records.
+    Mock::given(method("GET"))
+        .and(path("/loki/api/v1/query_range"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"status": "success", "data": {"resultType": "streams", "result": []}}),
+        ))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/loki/api/v1/query_range"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"status": "success",
+            "data": {"resultType": "streams",
+                     "result": [{"stream": {}, "values": [["1", "a"], ["2", "b"]]}]}})),
+        )
+        .mount(&server)
+        .await;
+    let outcome = smoke(&server.uri(), true).await;
+    assert_eq!(outcome.exit, Exit::Unauthenticated, "{}", outcome.stderr);
+    for id in [
+        "read.promql.counter",
+        "read.promql.gauge",
+        "read.promql.integer",
+        "read.promql.histogram_count",
+    ] {
+        assert_eq!(outcome.status(id), "error", "{id}");
+    }
+    assert_eq!(outcome.status("read.logql.records"), "pass");
+}
+
+#[tokio::test]
+async fn the_visibility_timeout_bounds_slow_reads() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(10)))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/sql"))
+        .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(10)))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    let started = std::time::Instant::now();
+    let outcome = smoke(&server.uri(), true).await;
+    // Ten reads of 10 s each would take 100 s; the 2 s visibility timeout
+    // bounds them all.
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(outcome.exit, Exit::Incomplete, "{}", outcome.stderr);
+    assert_eq!(outcome.status("read.promql.counter"), "error");
+    assert!(
+        outcome
+            .stderr
+            .contains("no answer before the 2s visibility timeout"),
+        "{}",
+        outcome.stderr
+    );
+}

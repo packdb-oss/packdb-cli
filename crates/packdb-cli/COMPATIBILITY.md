@@ -292,8 +292,11 @@ server's default tenant when none is given.
   | `read.sql.error_span` | `SELECT name FROM traces.packdb_smoke_backend WHERE status_code = 2 AND trace_id = '<trace>'` | `backend.write` |
   | `read.sql.service_spans` | `SELECT span_id FROM traces.<service> WHERE trace_id = '<trace>'` for both services | 1 + 2 spans |
 
-  A read still not matching at the timeout fails; a read that never got a usable
-  answer (a partial result counts as not yet visible) is missing evidence.
+  Each read gets only the time left before the timeout. A read still not matching at
+  the timeout fails; a read that never got a usable answer (a partial result counts as
+  not yet visible), or was not answered before the timeout, is missing evidence. A
+  read refused with `401` or `403`, or a server that stops answering, is recorded at
+  once rather than retried.
 - Exit: `1` when a write or read fails; `3` when evidence is missing; `4` or `5` when
   the server refuses the credential; `6` when the server sends no response to any
   write; otherwise `0`. The report (`packdb.cli.diagnostics.v1`, `report_kind`

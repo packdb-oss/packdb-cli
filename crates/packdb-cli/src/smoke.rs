@@ -641,8 +641,11 @@ impl Smoke {
     }
 
     /// Poll every pending read until it is graded or the visibility deadline
-    /// passes. At the deadline a read whose data never matched fails; a read
-    /// that never got a usable answer is missing evidence.
+    /// passes. Each read gets only the time left before the deadline. A read
+    /// that cannot improve by waiting — a refused credential, an unreachable
+    /// server — is recorded at once. At the deadline a read whose data never
+    /// matched fails; one that never got a usable answer, or never finished,
+    /// is missing evidence.
     async fn read_until(
         &mut self,
         prober: &Prober,
@@ -654,61 +657,82 @@ impl Smoke {
         let deadline = Instant::now() + visibility;
         let mut last: Vec<(Check, Read)> = Vec::new();
         loop {
-            last.clear();
+            let mut next = Vec::new();
             for check in std::mem::take(&mut pending) {
-                let read = read(check, prober, readers, fixture).await;
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    next.push(check);
+                    continue;
+                }
+                let Ok(read) =
+                    tokio::time::timeout(remaining, read(check, prober, readers, fixture)).await
+                else {
+                    next.push(check);
+                    continue;
+                };
+                last.retain(|(seen, _)| *seen != check);
                 match read {
                     Read::Done(finding) => {
                         self.read_answered = true;
                         self.report.push(finding);
                     }
-                    Read::NotYet(_) => {
+                    Read::NotYet(reason) => {
                         self.read_answered = true;
-                        pending.push(check);
-                        last.push((check, read));
+                        next.push(check);
+                        last.push((check, Read::NotYet(reason)));
                     }
-                    Read::Unusable(ref failure) => {
-                        // A refused credential or an unreachable server will
-                        // not change by waiting.
-                        if failure.exit != Exit::Incomplete {
-                            last.push((check, read));
-                            continue;
-                        }
-                        pending.push(check);
-                        last.push((check, read));
+                    Read::Unusable(failure) if failure.exit != Exit::Incomplete => {
+                        self.record_failure(
+                            failure.exit,
+                            client_exit_kind(failure.exit),
+                            &failure.reason,
+                        );
+                        self.report.uncollected(
+                            check.id(),
+                            Severity::Required,
+                            check.id(),
+                            &failure.reason,
+                        );
+                    }
+                    Read::Unusable(failure) => {
+                        next.push(check);
+                        last.push((check, Read::Unusable(failure)));
                     }
                 }
             }
-            let settled = last
-                .iter()
-                .all(|(_, read)| matches!(read, Read::Unusable(failure) if failure.exit != Exit::Incomplete));
-            if pending.is_empty() || settled || Instant::now() + POLL_INTERVAL > deadline {
+            pending = next;
+            if pending.is_empty() || Instant::now() + POLL_INTERVAL > deadline {
                 break;
             }
             tokio::time::sleep(POLL_INTERVAL).await;
         }
-        for (check, read) in last {
-            match read {
-                Read::NotYet(reason) => self.report.push(Finding::new(
+        for check in pending {
+            let latest = last
+                .iter()
+                .position(|(seen, _)| *seen == check)
+                .map(|index| last.swap_remove(index).1);
+            match latest {
+                Some(Read::NotYet(reason)) => self.report.push(Finding::new(
                     check.id(),
                     Severity::Required,
                     Status::Fail,
                     format!("not visible within {}s: {reason}", visibility.as_secs()),
                 )),
-                Read::Unusable(failure) => {
-                    self.record_failure(
-                        failure.exit,
-                        client_exit_kind(failure.exit),
-                        &failure.reason,
-                    );
-                    self.report.uncollected(
-                        check.id(),
-                        Severity::Required,
-                        check.id(),
-                        &failure.reason,
-                    );
-                }
-                Read::Done(_) => {}
+                Some(Read::Unusable(failure)) => self.report.uncollected(
+                    check.id(),
+                    Severity::Required,
+                    check.id(),
+                    &failure.reason,
+                ),
+                _ => self.report.uncollected(
+                    check.id(),
+                    Severity::Required,
+                    check.id(),
+                    &format!(
+                        "no answer before the {}s visibility timeout",
+                        visibility.as_secs()
+                    ),
+                ),
             }
         }
     }
