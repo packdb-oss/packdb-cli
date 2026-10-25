@@ -23,6 +23,7 @@ packdb query logql <EXPR> [connection] [--time T | --start T --end T --step D] [
 packdb query traceql <QUERY> [connection] [--start T] [--end T] [--limit N] [--format table|json|csv]
 packdb trace <TRACE_ID> [connection] [--start T --end T] [--format json]
 packdb doctor [connection] [--format text|json]
+packdb smoke-test --allow-write [connection] [--visibility-timeout SECS] [--format text|json]
 ```
 
 `packdb` with no subcommand prints help to stderr and exits `2`; it never starts a
@@ -256,6 +257,49 @@ none is ever reported as a pass. `error` and `withheld` checks are listed under
   (`id`, `status`, `severity` `required` or `info`, `summary`, `evidence`) and
   `missing_evidence` (`evidence`, `reason`).
 
+### `smoke-test`
+
+`packdb smoke-test` writes a small fixture to the server and reads this run's data back
+on every query surface. It writes only with `--allow-write`; without it, it exits `2`
+and sends nothing. The fixture goes to the tenant the connection names, or to the
+server's default tenant when none is given.
+
+- **Fixture** (`packdb.smoke-fixture.v1`), sent as OTLP/JSON to `/v1/metrics`,
+  `/v1/logs` and `/v1/traces`: a counter (7), a gauge (3), an integer gauge (128) and a
+  histogram (4 observations); two log records; a trace of three spans across two
+  services, one of them an error. Every resource, record and span carries
+  `packdb.smoke.run_id`, a marker generated for this run, and the trace ID is new for
+  this run too. The text report names the run; stderr notes that it was written.
+- **Writes** are sent once each and never retried, not even after a `429`. A write
+  passes only when the server answers `2xx` with an acknowledgement that rejects
+  nothing: an empty body, or an `application/x-protobuf` OTLP export response with no
+  rejected records. Rejected records fail the write; any other acknowledgement —
+  undecodable, carrying fields the export response does not define, or another
+  content type — is missing evidence, never zero rejections. A refused credential or
+  an unreachable server stops the remaining writes. A signal whose write did not pass
+  is not read.
+- **Reads** filter on this run's marker or trace ID, so another run's data cannot
+  satisfy them, and repeat every second until each matches exactly or
+  `--visibility-timeout` (default 60, at most 300 seconds) passes:
+
+  | check | request | expected |
+  | --- | --- | --- |
+  | `read.promql.counter`, `.gauge`, `.integer`, `.histogram_count` | `sum(<metric>{packdb_smoke_run_id="<run>"})` at the run's end | 7, 3, 128, 4 |
+  | `read.logql.records` | `` {service_name="packdb-smoke-frontend"} \| packdb_smoke_run_id = `<run>` `` over the run's window | 2 records |
+  | `read.traceql.search` | `{ span.packdb.smoke.run_id = "<run>" }` over the run's window | 1 trace with the run's trace ID |
+  | `read.trace.spans` | `GET /api/v2/traces/<trace>` | 3 spans |
+  | `read.jaeger.spans` | `GET /jaeger/api/traces/<trace>` | 3 spans |
+  | `read.sql.error_span` | `SELECT name FROM traces.packdb_smoke_backend WHERE status_code = 2 AND trace_id = '<trace>'` | `backend.write` |
+  | `read.sql.service_spans` | `SELECT span_id FROM traces.<service> WHERE trace_id = '<trace>'` for both services | 1 + 2 spans |
+
+  A read still not matching at the timeout fails; a read that never got a usable
+  answer (a partial result counts as not yet visible) is missing evidence.
+- Exit: `1` when a write or read fails; `3` when evidence is missing; `4` or `5` when
+  the server refuses the credential; `6` when the server sends no response to any
+  write; otherwise `0`. The report (`packdb.cli.diagnostics.v1`, `report_kind`
+  `smoke_test`) records the run marker, trace ID, fixture version and visibility
+  timeout under `requested_scope`.
+
 ## Not promised
 
 - **Exact table layout.** Parse `json` or `csv` instead.
@@ -308,6 +352,11 @@ none is ever reported as a pass. `error` and `withheld` checks are listed under
   incomplete, unusable `/info` answers (wrong shape, partial, redirect, throttle),
   `401` and `403`, an unreachable or silent server, one deadline across retries,
   and a long `Retry-After` reported without retrying.
+- `crates/packdb-cli/tests/smoke.rs` and the `smoke` unit tests: nothing sent without
+  `--allow-write`; each signal written once with every read scoped to the run's marker
+  or trace ID; rejected, malformed, unrecognized and mislabelled acknowledgements; a
+  `429` write not retried; a refused credential stopping the writes; an unreachable
+  server; data that never appears failing at the timeout.
 - `crates/packdb-cli-test-harness/tests/process.rs`: the same contract as a process
   sees it, covering help, the refused secret argument, stdout/stderr separation,
   exit codes, credential files, conflicts, a closed stdout (exit `8`), the PromQL,
