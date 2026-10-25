@@ -32,7 +32,7 @@ server. `--help` and `--version` exit `0`.
 
 | flag | environment | default |
 | --- | --- | --- |
-| `--endpoint URL` | `PACKDB_ENDPOINT` | `http://127.0.0.1:4000` |
+| `--endpoint URL` | `PACKDB_ENDPOINT` | `http://127.0.0.1:8080`, the server's default HTTP listener |
 | `--flight-endpoint URL` | `PACKDB_FLIGHT_ENDPOINT` | — |
 | `--api-key-file PATH` | `PACKDB_API_KEY` or `PACKDB_API_KEY_FILE` | — |
 | `--token-file PATH` | `PACKDB_TOKEN` or `PACKDB_TOKEN_FILE` | — |
@@ -102,7 +102,7 @@ server. `--help` and `--version` exit `0`.
   {
     "schema_version": "packdb.cli.v1",
     "command": "query sql",
-    "endpoint": "http://127.0.0.1:4000",
+    "endpoint": "http://127.0.0.1:8080",
     "transport": {"requested": "auto", "used": "http", "fallback_reason": null},
     "completeness": "unknown",
     "partial_causes": [],
@@ -273,6 +273,7 @@ none is ever reported as a pass. `error` and `withheld` checks are listed under
 | --- | --- |
 | `packdb-query '<SQL>'` | `packdb query sql '<SQL>'` |
 | `--url` / `PACKDB_URL` | `--endpoint` / `PACKDB_ENDPOINT` |
+| default `http://localhost:4000` | default `http://127.0.0.1:8080` |
 | `--flight-endpoint` / `PACKDB_FLIGHT_URL` | `--flight-endpoint` / `PACKDB_FLIGHT_ENDPOINT` |
 | `--api-key VALUE` | `PACKDB_API_KEY`, `PACKDB_API_KEY_FILE` or `--api-key-file` |
 | `--token VALUE` | `PACKDB_TOKEN`, `PACKDB_TOKEN_FILE` or `--token-file` |
