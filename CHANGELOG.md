@@ -48,6 +48,11 @@ this repository now provides; its 0.2.x archives are unchanged. See
   Jaeger and SQL until a visibility timeout, filtering every read on this run. Writes
   are never retried, and an acknowledgement that does not decode as an OTLP export
   response is never counted as zero rejected records.
+- `packdb support-bundle` writes a deterministic `.tar.zst` with the doctor report,
+  the server's `/info` and read-only `/health/diagnostics`, and a description of the
+  client, plus a manifest and SHA-256 checksums. Every file is scanned for secrets
+  and for the configured credential first; a match leaves the file out, and an
+  existing output file is never replaced.
 - Table and CSV columns of `query sql` keep the order in which the response lists
   them instead of being sorted by name. That order is what the client receives;
   it is not promised to match the `SELECT` list.

@@ -19,16 +19,22 @@ publish = false
 packdb-client = { version = "0.2.4", features = ["sql"] }
 clap = { version = "4.5", features = ["derive"] }
 http = "1"
+# SHA-256 for the support bundle's manifest; already the TLS stack's crypto.
+aws-lc-rs = { version = "1", default-features = false, features = ["aws-lc-sys"] }
 humantime = "2"
 # Decodes the server's OTLP export acknowledgements in `smoke-test`.
 prost = "0.14"
 # Diagnostics read raw status, headers and bounded bodies; the same reqwest the
 # SDK uses, with credentials applied through the SDK's `AuthProvider`.
 reqwest = "0.13"
+# The support bundle's secret scan.
+regex = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 tokio = { version = "1.49", features = ["macros", "time"] }
 # The `smoke-test` run marker and trace and span identifiers.
 uuid = { version = "1", features = ["v4"] }
+# Compresses the support bundle.
+zstd = { version = "0.13", default-features = false }
 
 [dev-dependencies]
 tokio = { version = "1.49", features = ["macros", "rt"] }

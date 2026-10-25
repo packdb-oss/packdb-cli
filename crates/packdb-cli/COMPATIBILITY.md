@@ -24,6 +24,7 @@ packdb query traceql <QUERY> [connection] [--start T] [--end T] [--limit N] [--f
 packdb trace <TRACE_ID> [connection] [--start T --end T] [--format json]
 packdb doctor [connection] [--format text|json]
 packdb smoke-test --allow-write [connection] [--visibility-timeout SECS] [--format text|json]
+packdb support-bundle [connection] [--output PATH] [--format text|json]
 ```
 
 `packdb` with no subcommand prints help to stderr and exits `2`; it never starts a
@@ -302,6 +303,39 @@ server's default tenant when none is given.
   write; otherwise `0`. The report (`packdb.cli.diagnostics.v1`, `report_kind`
   `smoke_test`) records the run marker, trace ID, fixture version and visibility
   timeout under `requested_scope`.
+### `support-bundle`
+
+`packdb support-bundle` collects diagnostics into one archive for support. It sends
+what `doctor` sends — `GET /info` and `GET /health/diagnostics`, nothing that creates
+tenant state — and writes `--output` (default
+`packdb-support-bundle-<UTC time>.tar.zst` in the working directory).
+
+- **Contents:** `manifest.json` (`format` `packdb.cli.support-bundle.v1`, creation
+  time, tool, every file with its size and SHA-256, and the bundle report),
+  `checksums.sha256` (`shasum -a 256 -c` format), `doctor/report.json`,
+  `server/info.json` and `server/diagnostics.json` (the server's answers as received,
+  when usable), and `client/environment.json` (tool version, platform, endpoint
+  without user information, whether a tenant and a Flight endpoint are set, the
+  credential kind, the timeout, and the names of the `PACKDB_*` variables that are
+  set — never a value).
+- **No secrets:** every file is scanned before it is written for private keys, JWTs,
+  `Authorization` headers, bearer tokens, password, secret, token and key
+  assignments, URL user information, AWS access key IDs, and the exact credential the
+  connection uses. A file that matches is left out and reported `withheld`, naming the
+  class found but never the text; if the manifest or checksums would match, no
+  archive is written.
+- **Bounds:** each server answer is read to at most 8 MiB, the files together to at
+  most 32 MiB.
+- **Writing:** a deterministic tar (fixed modes, owners and times) compressed with
+  zstd, written to a temporary file beside the destination, read back and checked
+  against its manifest, then linked into place. An existing file is never replaced:
+  if `--output` exists, the command exits `2` before sending anything.
+- Exit: `3` while any required file is missing or withheld or the included doctor
+  report is incomplete (it is, while doctor withholds checks); `4` or `5` when the
+  server refuses the credential; `6` when the server sends no response, in which case
+  the client side is still bundled; `8` when the archive cannot be written. The
+  report (`packdb.cli.diagnostics.v1`, `report_kind` `support_bundle`) lists one
+  finding per file and `bundle.archive` with the path, size and SHA-256.
 
 ## Not promised
 
@@ -360,6 +394,12 @@ server's default tenant when none is given.
   or trace ID; rejected, malformed, unrecognized and mislabelled acknowledgements; a
   `429` write not retried; a refused credential stopping the writes; an unreachable
   server; data that never appears failing at the timeout.
+- `crates/packdb-cli/tests/bundle.rs` and the `bundle`, `secrets` and `tarball` unit
+  tests: a bundle holding the server's answers but never the credential; a server
+  answer carrying the credential or a private key left out; an existing output refused
+  before anything is sent; an unreachable server still bundled (exit `6`); an
+  unwritable destination (exit `8`); every secret class; a manifest that would carry
+  the credential writing nothing; the tar container read back by the system `tar`.
 - `crates/packdb-cli-test-harness/tests/process.rs`: the same contract as a process
   sees it, covering help, the refused secret argument, stdout/stderr separation,
   exit codes, credential files, conflicts, a closed stdout (exit `8`), the PromQL,

@@ -1,0 +1,8 @@
+crates/packdb-cli/src/secrets.rs	-----BEGIN RSA PRIVATE KEY-----	synthetic input proving the support-bundle secret scan finds private keys
+crates/packdb-cli/src/secrets.rs	AKIAABCDEFGHIJKLMNOP	synthetic input proving the secret scan finds AWS access key IDs (gitleaks:allow)
+crates/packdb-cli/src/secrets.rs	password: "opensesame"	synthetic basic-auth password proving the scan finds the configured credential
+crates/packdb-cli/tests/bundle.rs	-----BEGIN PRIVATE KEY-----	synthetic server answer proving a private key never reaches the bundle
+scripts/export_clean_allow.txt	-----BEGIN RSA PRIVATE KEY-----	the exception above, which names its string
+scripts/export_clean_allow.txt	AKIAABCDEFGHIJKLMNOP	the exception above, which names its string (gitleaks:allow)
+scripts/export_clean_allow.txt	password: "opensesame"	the exception above, which names its string
+scripts/export_clean_allow.txt	-----BEGIN PRIVATE KEY-----	the exception above, which names its string

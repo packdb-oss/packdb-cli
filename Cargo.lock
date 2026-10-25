@@ -1615,16 +1615,19 @@ dependencies = [
 name = "packdb-cli"
 version = "0.2.4"
 dependencies = [
+ "aws-lc-rs",
  "clap",
  "http",
  "humantime",
  "packdb-client",
  "prost",
+ "regex",
  "reqwest",
  "serde_json",
  "tokio",
  "uuid",
  "wiremock",
+ "zstd",
 ]
 
 [[package]]

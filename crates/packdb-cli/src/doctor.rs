@@ -114,20 +114,31 @@ pub(crate) async fn run(args: DoctorArgs, io: Io<'_>) -> Exit {
         Ok(prober) => prober,
         Err(error) => return deliver(stdout, stderr, &Rendered::error(&error.0), Exit::Usage),
     };
-    let mut doctor = Doctor::new(&endpoint, tenant_supplied);
-    doctor.check(&prober).await;
-    doctor.answered = prober.responded();
-    doctor.report.finished_at = SystemTime::now();
+    let doctor = diagnose(&endpoint, tenant_supplied, &prober).await;
     let out = doctor.render(&endpoint, args.format);
     deliver(stdout, stderr, &out, doctor.exit())
 }
 
-/// One doctor run: the report, and the answers that never came.
-struct Doctor {
-    report: Report,
-    failures: Vec<ProbeError>,
+/// Run every doctor check against `prober`'s server.
+pub(crate) async fn diagnose(endpoint: &str, tenant_supplied: bool, prober: &Prober) -> Doctor {
+    let mut doctor = Doctor::new(endpoint, tenant_supplied);
+    doctor.check(prober).await;
+    doctor.answered = prober.responded();
+    doctor.report.finished_at = SystemTime::now();
+    doctor
+}
+
+/// One doctor run: the report, the answers that never came, and the server's
+/// own answers where they were usable evidence.
+pub(crate) struct Doctor {
+    pub(crate) report: Report,
+    pub(crate) failures: Vec<ProbeError>,
     /// Whether the server sent any response, usable as evidence or not.
-    answered: bool,
+    pub(crate) answered: bool,
+    /// The `/info` body, when it had the documented shape.
+    pub(crate) info_body: Option<Vec<u8>>,
+    /// The `/health/diagnostics` body, when it had the documented shape.
+    pub(crate) diagnostics_body: Option<Vec<u8>>,
 }
 
 impl Doctor {
@@ -144,15 +155,18 @@ impl Doctor {
             report,
             failures: Vec::new(),
             answered: false,
+            info_body: None,
+            diagnostics_body: None,
         }
     }
 
     async fn check(&mut self, prober: &Prober) {
         const ID: &str = "process.version";
-        let info = self
-            .get(prober, "/info")
-            .await
-            .and_then(|response| read_info(&response));
+        let info = self.get(prober, "/info").await.and_then(|response| {
+            let info = read_info(&response)?;
+            self.info_body = Some(response.body);
+            Ok(info)
+        });
         match info {
             Ok(info) => {
                 if let Some(environment) = &info.environment {
@@ -209,7 +223,13 @@ impl Doctor {
                     }
                     return;
                 }
-                Ok(response) => read_diagnostics(&response),
+                Ok(response) => {
+                    let diagnostics = read_diagnostics(&response);
+                    if diagnostics.is_ok() {
+                        self.diagnostics_body = Some(response.body);
+                    }
+                    diagnostics
+                }
                 Err(message) => Err(message),
             }
         };
@@ -321,7 +341,7 @@ impl Doctor {
 
     /// A server that answered any request was reached: a later request it
     /// did not answer is missing evidence, not an unreachable server.
-    fn exit(&self) -> Exit {
+    pub(crate) fn exit(&self) -> Exit {
         self.failures
             .iter()
             .filter(|failure| !(self.answered && matches!(failure, ProbeError::Unreachable(_))))
