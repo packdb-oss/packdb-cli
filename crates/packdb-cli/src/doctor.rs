@@ -116,6 +116,7 @@ pub(crate) async fn run(args: DoctorArgs, io: Io<'_>) -> Exit {
     };
     let mut doctor = Doctor::new(&endpoint, tenant_supplied);
     doctor.check(&prober).await;
+    doctor.answered = prober.responded();
     doctor.report.finished_at = SystemTime::now();
     let out = doctor.render(&endpoint, args.format);
     deliver(stdout, stderr, &out, doctor.exit())
@@ -125,7 +126,7 @@ pub(crate) async fn run(args: DoctorArgs, io: Io<'_>) -> Exit {
 struct Doctor {
     report: Report,
     failures: Vec<ProbeError>,
-    /// Whether the server answered any request.
+    /// Whether the server sent any response, usable as evidence or not.
     answered: bool,
 }
 
@@ -192,7 +193,7 @@ impl Doctor {
 
     /// Health, readiness and registered routes from `/health/diagnostics`.
     async fn diagnostics(&mut self, prober: &Prober) {
-        let read = if !self.answered && self.unreachable() {
+        let read = if !prober.responded() && self.unreachable() {
             Err("/health/diagnostics was not requested: the server did not answer /info".into())
         } else {
             match self.get(prober, "/health/diagnostics").await {
@@ -305,17 +306,11 @@ impl Doctor {
 
     /// `GET path`: the answer, or the failure recorded and its message.
     async fn get(&mut self, prober: &Prober, path: &str) -> Result<ProbeResponse, String> {
-        match prober.get(path).await {
-            Ok(response) => {
-                self.answered = true;
-                Ok(response)
-            }
-            Err(error) => {
-                let message = error.message().to_string();
-                self.failures.push(error);
-                Err(message)
-            }
-        }
+        prober.get(path).await.map_err(|error| {
+            let message = error.message().to_string();
+            self.failures.push(error);
+            message
+        })
     }
 
     fn unreachable(&self) -> bool {

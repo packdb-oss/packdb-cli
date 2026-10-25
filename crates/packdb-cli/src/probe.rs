@@ -27,6 +27,7 @@
 //! and fits before the deadline; otherwise the throttle is reported.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use http::{HeaderMap, HeaderValue, StatusCode};
@@ -107,6 +108,8 @@ pub(crate) struct Prober {
     tenant: Option<HeaderValue>,
     auth: Arc<dyn AuthProvider>,
     timeout: Duration,
+    /// Whether any response arrived, whatever its status or usability.
+    responded: AtomicBool,
 }
 
 impl Prober {
@@ -132,7 +135,14 @@ impl Prober {
             tenant,
             auth: connection.auth.into_provider(),
             timeout: connection.timeout,
+            responded: AtomicBool::new(false),
         })
+    }
+
+    /// Whether the server sent any response: a `401`, a throttle or a redirect
+    /// counts, because the server was reached even though it gave no evidence.
+    pub(crate) fn responded(&self) -> bool {
+        self.responded.load(Ordering::Relaxed)
     }
 
     /// `GET path`, within the request timeout.
@@ -244,6 +254,7 @@ impl Prober {
             .headers(headers)
             .send()
             .await
+            .inspect(|_| self.responded.store(true, Ordering::Relaxed))
             .map_err(|error| self.send_error(path, &error))
     }
 

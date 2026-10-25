@@ -491,3 +491,51 @@ async fn a_diagnostics_timeout_after_info_answered_is_missing_evidence() {
         outcome.stderr
     );
 }
+
+#[tokio::test]
+async fn a_classified_info_answer_then_a_timeout_is_still_a_reached_server() {
+    for (info, exit) in [
+        (
+            ResponseTemplate::new(429).insert_header("retry-after", "3600"),
+            Exit::Incomplete,
+        ),
+        (ResponseTemplate::new(401), Exit::Unauthenticated),
+        (
+            ResponseTemplate::new(302).insert_header("location", "https://login.invalid/"),
+            Exit::Incomplete,
+        ),
+    ] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/info"))
+            .respond_with(info)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/health/diagnostics"))
+            .respond_with(diagnostics("healthy", true).set_delay(Duration::from_secs(3)))
+            .mount(&server)
+            .await;
+        let outcome = doctor(
+            ConnectionArgs {
+                timeout: Some(1),
+                ..at(&server.uri())
+            },
+            OperatorFormat::Json,
+            Env::default(),
+        )
+        .await;
+        // /info was answered, unusably; the server was reached, so the
+        // diagnostics timeout is missing evidence and never exit 6.
+        assert_eq!(outcome.exit, exit, "{}", outcome.stderr);
+        assert_eq!(outcome.envelope()["transport"]["used"], "http");
+        for id in ["process.health", "process.ready"] {
+            assert_eq!(outcome.finding(id)["status"], "error", "{id}");
+        }
+        assert!(
+            outcome.stderr.contains("no answer within 1s"),
+            "{}",
+            outcome.stderr
+        );
+    }
+}

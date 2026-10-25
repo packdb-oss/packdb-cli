@@ -243,9 +243,10 @@ none is ever reported as a pass. `error` and `withheld` checks are listed under
   else is retried.
 - Exit: `1` when a required check fails; `3` while any required check is withheld or
   its evidence is missing; `4` or `5` when the server refuses the credential; `6`
-  when the server answers none of doctor's requests. Once the server has answered
-  one, a later request it does not answer is missing evidence (`3`), and the
-  envelope's `transport.used` stays `http`. The precedence above applies. The envelope's
+  when the server sends no response to any of doctor's requests. Once it has sent
+  any response, even a refusal, throttle or redirect, a later request it does not
+  answer is missing evidence (`3`), and the envelope's `transport.used` stays
+  `http`. The precedence above applies. The envelope's
   `completeness` is `unknown`; the report's is `incomplete`. stderr always carries
   `warning: completeness unknown (limited diagnostics: ...)`.
 - The report (`schema_version` `packdb.cli.diagnostics.v1`) holds `report_kind`,
