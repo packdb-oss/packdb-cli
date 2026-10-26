@@ -349,6 +349,12 @@ under `data` with `--format json`. It sends one request, `GET /health/usage`, wh
 the open-source PackDB server creates no tenant state and does not resolve the
 request's tenant.
 
+It is an operator command, not a report of the caller's own usage: memory and ingest
+are process-wide, and storage is the server's own monitoring tenant, whatever tenant
+the credential belongs to. With authentication enabled the route requires the
+server's admin permission; with authentication disabled, who can call it depends on
+the deployment's network boundary.
+
 Each measurement keeps the scope and period the server declares, and the report
 refuses an answer whose declarations differ from these:
 

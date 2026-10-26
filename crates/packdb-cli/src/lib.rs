@@ -80,7 +80,7 @@ pub enum Command {
     SmokeTest(SmokeTestArgs),
     /// Collect diagnostics into one archive for support, without credentials.
     SupportBundle(SupportBundleArgs),
-    /// Report the server's resource usage, each value with its scope and period.
+    /// Report the server's resource usage for its operator, each value with its scope and period.
     UsageReport(UsageReportArgs),
 }
 
