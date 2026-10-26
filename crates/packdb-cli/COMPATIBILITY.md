@@ -367,6 +367,9 @@ refuses an answer whose declarations differ from these:
   anything else leaves all three `error`.
 - `usage.memory`'s resident bytes exclude the cold tier when its budget is unbounded,
   so they need not equal the sum of the three tier fields.
+- Hot-tier metric names and rows are counted as stored: a histogram is one name,
+  where PromQL lists its `_bucket`, `_count` and `_sum` series separately. Neither
+  count is comparable with `usage.ingest`, which sums points across all signals.
 - Exit: `0` when all three measurements are present; `3` while any is unavailable,
   withheld or unusable; `4` or `5` when the server refuses the credential; `6` when it
   sends no response. The report is `packdb.cli.diagnostics.v1` with `report_kind`
