@@ -53,12 +53,15 @@ this repository now provides; its 0.2.x archives are unchanged. See
   client, plus a manifest and SHA-256 checksums. Every file is scanned for secrets
   and for the configured credential first; a match leaves the file out, and an
   existing output file is never replaced.
+- The support bundle is compressed with `zstd` 0.14.3; 0.13.3 and the `zstd-safe`
+  and `zstd-sys` versions it used carry RustSec advisories.
 - Table and CSV columns of `query sql` keep the order in which the response lists
   them instead of being sorted by name. That order is what the client receives;
   it is not promised to match the `SELECT` list.
 - Requires `packdb-client` with the transport and error changes of
-  packdb-oss/packdb-sdk#34, and with the query API client (`QueryApiClient`) of
-  packdb-oss/packdb-sdk#36.
+  packdb-oss/packdb-sdk#34, with the query API client (`QueryApiClient`) of
+  packdb-oss/packdb-sdk#36, and without `tonic`'s `zstd` feature
+  (packdb-oss/packdb-sdk#37).
 
 ## 0.2.4
 

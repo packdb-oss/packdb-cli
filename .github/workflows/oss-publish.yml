@@ -15,7 +15,7 @@ permissions:
 env:
   # The reviewed packdb-oss/packdb-sdk commit this repository builds against.
   # Changing it is a CLI decision, made in a CLI pull request.
-  SDK_COMMIT: "ee8786c5f38e307084fa28893e4826711cb72104"
+  SDK_COMMIT: "1086f60d9b86b86d45c6eb28bfbd281919429e46"
 concurrency:
   group: oss-publication
   cancel-in-progress: false
