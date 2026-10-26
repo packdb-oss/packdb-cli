@@ -44,6 +44,7 @@ mod sql;
 mod time;
 mod trace;
 mod traceql;
+mod usage;
 
 use std::io::Write;
 
@@ -60,6 +61,7 @@ pub use smoke::{FIXTURE_VERSION, SmokeTestArgs};
 pub use sql::{SqlArgs, TransportChoice};
 pub use trace::TraceArgs;
 pub use traceql::TraceqlArgs;
+pub use usage::UsageReportArgs;
 
 /// A `packdb` client command.
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -78,6 +80,8 @@ pub enum Command {
     SmokeTest(SmokeTestArgs),
     /// Collect diagnostics into one archive for support, without credentials.
     SupportBundle(SupportBundleArgs),
+    /// Report the server's resource usage, each value with its scope and period.
+    UsageReport(UsageReportArgs),
 }
 
 /// A query language.
@@ -116,5 +120,6 @@ pub async fn run(command: Command, io: Io<'_>) -> Exit {
         Command::Doctor(args) => doctor::run(args, io).await,
         Command::SmokeTest(args) => smoke::run(args, io).await,
         Command::SupportBundle(args) => bundle::run(args, io).await,
+        Command::UsageReport(args) => usage::run(args, io).await,
     }
 }

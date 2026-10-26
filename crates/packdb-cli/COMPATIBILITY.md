@@ -25,6 +25,7 @@ packdb trace <TRACE_ID> [connection] [--start T --end T] [--format json]
 packdb doctor [connection] [--format text|json]
 packdb smoke-test --allow-write [connection] [--visibility-timeout SECS] [--format text|json]
 packdb support-bundle [connection] [--output PATH] [--format text|json]
+packdb usage-report [connection] [--format text|json]
 ```
 
 `packdb` with no subcommand prints help to stderr and exits `2`; it never starts a
@@ -340,6 +341,38 @@ tenant state — and writes `--output` (default
   report (`packdb.cli.diagnostics.v1`, `report_kind` `support_bundle`) lists one
   finding per file and `bundle.archive` with the path, size and SHA-256.
 
+### `usage-report`
+
+`packdb usage-report` reports a running server's resource usage: one line per
+measurement with `--format text` (the default), or the JSON envelope with the report
+under `data` with `--format json`. It sends one request, `GET /health/usage`, which in
+the open-source PackDB server creates no tenant state and does not resolve the
+request's tenant.
+
+Each measurement keeps the scope and period the server declares, and the report
+refuses an answer whose declarations differ from these:
+
+| check | scope | period | value |
+| --- | --- | --- | --- |
+| `usage.memory` (required) | `process` | `current` | bytes resident in the storage tiers, their budget, and allocator memory outside them |
+| `usage.ingest` (required) | `process` | `since_process_start` | points accepted across all signals and protocols; a restart resets it |
+| `usage.storage` (required) | `tenant` | `current` | the server's own tenant: logical and stored bytes per attached tier, and metric names and rows in the hot tier |
+| `usage.ingest_by_signal`, `usage.ingest_by_tenant`, `usage.windowed_totals`, `usage.queries`, `usage.limits` | | | `not_exposed` |
+
+- A value the server reports as unavailable (`null` with a reason) is `error` and
+  listed under `missing_evidence` with that reason, never reported as zero. A server
+  without `/health/usage` (`404`) leaves the three measurements `withheld`.
+- An answer counts as evidence only when it is a complete, unredirected `200` with
+  `schema_version` `packdb.server.usage.v1` and every measurement in the shape above;
+  anything else leaves all three `error`.
+- `usage.memory`'s resident bytes exclude the cold tier when its budget is unbounded,
+  so they need not equal the sum of the three tier fields.
+- Exit: `0` when all three measurements are present; `3` while any is unavailable,
+  withheld or unusable; `4` or `5` when the server refuses the credential; `6` when it
+  sends no response. The report is `packdb.cli.diagnostics.v1` with `report_kind`
+  `usage-report`; each present measurement's `evidence` holds `scope`, `period`,
+  `value` and, for storage, `tenant_id`.
+
 ## Not promised
 
 - **Exact table layout.** Parse `json` or `csv` instead.
@@ -347,8 +380,8 @@ tenant state — and writes `--output` (default
 - **`--help` and `--version` formatting.**
 - **Ordering of result rows**, unless the query orders them.
 - **Column order of `query sql` table and CSV output.**
-- **`doctor` summaries and evidence values**, beyond the check identifiers, statuses
-  and severities listed above.
+- **`doctor` and `usage-report` summaries and evidence values**, beyond the check
+  identifiers, statuses, severities, scopes and periods listed above.
 - **JSON key order and whitespace.**
 
 ## Migrating from `packdb-query`
@@ -405,10 +438,15 @@ tenant state — and writes `--output` (default
   every secret class; a manifest that would carry the credential writing nothing; a
   failed write leaving other files, including look-alike temporary names, untouched;
   a deterministic tar read back by the system `tar`.
+- `crates/packdb-cli/tests/usage.rs` and the `usage` unit tests: one `GET
+  /health/usage` with the credential, each measurement's scope and period kept, an
+  unavailable value reported as missing evidence and never as zero, a server without
+  the route, answers with a wrong schema, scope, period, omitted or negative value,
+  `401`, `403` and an unreachable server.
 - `crates/packdb-cli-test-harness/tests/process.rs`: the same contract as a process
   sees it, covering help, the refused secret argument, stdout/stderr separation,
   exit codes, credential files, conflicts, a closed stdout (exit `8`), the PromQL,
-  trace and time-argument cases, and `doctor`.
+  trace and time-argument cases, `doctor` and `usage-report`.
 - `packdb-client`'s own tests cover the transport fallback rules, the query API
   requests and error classification.
 
