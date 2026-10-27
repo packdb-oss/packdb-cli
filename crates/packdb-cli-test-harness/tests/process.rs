@@ -434,3 +434,33 @@ async fn doctor_is_listed_refuses_csv_and_exits_6_when_unreachable() {
         text(&output.stderr)
     );
 }
+
+#[tokio::test]
+async fn usage_report_is_listed_refuses_csv_and_exits_6_when_unreachable() {
+    let help = harness(&["--help"], &[]).await;
+    assert!(
+        text(&help.stdout).contains("usage-report"),
+        "{}",
+        text(&help.stdout)
+    );
+    let csv = harness(&["usage-report", "--format", "csv"], &[]).await;
+    assert_eq!(csv.status.code(), Some(2));
+    assert!(csv.stdout.is_empty());
+    let refusing = refusing_endpoint();
+    let output = harness(
+        &["usage-report"],
+        &[("PACKDB_ENDPOINT", &refusing.endpoint)],
+    )
+    .await;
+    assert_eq!(output.status.code(), Some(6), "{}", text(&output.stderr));
+    assert!(
+        text(&output.stdout).starts_with("packdb usage-report: "),
+        "{}",
+        text(&output.stdout)
+    );
+    assert!(
+        text(&output.stderr).contains("error: /health/usage: cannot connect"),
+        "{}",
+        text(&output.stderr)
+    );
+}

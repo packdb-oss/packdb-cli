@@ -1,8 +1,8 @@
 # `packdb-cli`
 
 The command library behind `packdb`: queries, trace lookup, limited `doctor`
-diagnostics, `smoke-test` and `support-bundle` against a running PackDB server;
-further operator commands follow in later releases.
+diagnostics, `smoke-test`, `support-bundle` and `usage-report` against a running
+PackDB server.
 
 This crate ships no executable. The `packdb` binary that embeds it is assembled
 with the server. `packdb-query`, the binary of releases 0.2.0 to 0.2.4, is

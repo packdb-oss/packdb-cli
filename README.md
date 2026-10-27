@@ -2,8 +2,8 @@
 
 `packdb-cli` is the command library behind `packdb`, PackDB's command-line
 client. It implements `packdb query sql|promql|logql|traceql`, `packdb trace`,
-`packdb doctor` (limited diagnostics), `packdb smoke-test` and `packdb support-bundle`;
-the other operator commands follow.
+`packdb doctor` (limited diagnostics), `packdb smoke-test`, `packdb support-bundle` and
+`packdb usage-report`.
 
 | Package | Scope |
 | --- | --- |

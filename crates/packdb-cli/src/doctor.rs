@@ -426,7 +426,7 @@ impl Doctor {
     }
 }
 
-fn probe_error_kind(error: &ProbeError) -> &'static str {
+pub(crate) fn probe_error_kind(error: &ProbeError) -> &'static str {
     match error {
         ProbeError::Unauthenticated(_) => "unauthenticated",
         ProbeError::PermissionDenied(_) => "permission_denied",

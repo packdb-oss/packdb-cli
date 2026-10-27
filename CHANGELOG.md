@@ -55,6 +55,13 @@ this repository now provides; its 0.2.x archives are unchanged. See
   existing output file is never replaced.
 - The support bundle is compressed with `zstd` 0.14.3; 0.13.3 and the `zstd-safe`
   and `zstd-sys` versions it used carry RustSec advisories.
+- `packdb usage-report`, an operator command, reports the server's resource usage
+  from its read-only `GET /health/usage`: tier memory (process-wide, current),
+  points accepted since the process started (process-wide), and the server's own
+  monitoring tenant's storage (current), each with its scope and period. It is not
+  a report of the caller's own tenant. A value the server reports unavailable leaves
+  the report incomplete (exit `3`) instead of reading as zero; ingest per signal or
+  tenant, windowed totals, query counts and limits are listed as `not_exposed`.
 - Table and CSV columns of `query sql` keep the order in which the response lists
   them instead of being sorted by name. That order is what the client receives;
   it is not promised to match the `SELECT` list.
