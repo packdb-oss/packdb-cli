@@ -11,5 +11,5 @@ is the binding contract for commands, credentials, output, completeness and exit
 release broke one of those is a defect, and a report about anything the contract
 lists as not promised is not. Where substantiated, “used in production”
 describes deployment use only, with no quality, HA or other commercial guarantee.
-Paid PackDB services have separate support terms. Maintainers may
-close duplicate, unreproducible, off-topic or unsupported requests with an explanation.
+Maintainers may close duplicate, unreproducible, off-topic or unsupported requests
+with an explanation.
