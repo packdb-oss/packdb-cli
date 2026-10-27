@@ -9,7 +9,7 @@ concurrency:
 env:
   # The reviewed packdb-oss/packdb-sdk commit this repository builds against.
   # Changing it is a CLI decision, made in a CLI pull request.
-  SDK_COMMIT: "1086f60d9b86b86d45c6eb28bfbd281919429e46"
+  SDK_COMMIT: "522c0d951a495e3dddb0a6387256f7ace430fadc"
 defaults:
   run:
     working-directory: packdb-cli
