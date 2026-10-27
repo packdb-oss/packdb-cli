@@ -397,3 +397,36 @@ async fn csv_columns_keep_the_server_order() {
         outcome.stdout
     );
 }
+
+#[tokio::test]
+async fn table_and_csv_cells_keep_the_decoded_values() {
+    let body = r#"{"rows": [
+        {"span_id": 1791227706083264631, "min": -9223372036854775808, "one": 1, "tenth": 0.1, "tag": null},
+        {"span_id": 9007199254740993, "min": 0, "one": "text", "tenth": [1, "x"], "tag": true}
+    ]}"#;
+    let server = server(ResponseTemplate::new(200).set_body_raw(body, "application/json")).await;
+
+    let csv = sql(&server.uri(), QueryFormat::Csv, Env::default()).await;
+    assert_eq!(csv.exit, Exit::Incomplete, "{}", csv.stderr);
+    assert_eq!(
+        csv.stdout,
+        "span_id,min,one,tenth,tag\n\
+         1791227706083264631,-9223372036854775808,1,0.1,\n\
+         9007199254740993,0,text,\"[1,\"\"x\"\"]\",true\n"
+    );
+
+    let table = sql(&server.uri(), QueryFormat::Table, Env::default()).await;
+    for cell in [
+        "1791227706083264631",
+        "-9223372036854775808",
+        "9007199254740993",
+        "text",
+    ] {
+        assert!(
+            table.stdout.contains(cell),
+            "{cell} missing: {}",
+            table.stdout
+        );
+    }
+    assert!(!table.stdout.contains("e18"), "{}", table.stdout);
+}

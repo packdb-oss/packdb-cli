@@ -65,10 +65,17 @@ this repository now provides; its 0.2.x archives are unchanged. See
 - Table and CSV columns of `query sql` keep the order in which the response lists
   them instead of being sorted by name. That order is what the client receives;
   it is not promised to match the `SELECT` list.
+- `query sql` table and CSV output no longer change values. Every number was
+  printed as a 64-bit float, so integers above 2^53 lost digits (a span ID
+  `1791227706083264631` printed as `1.7912277060832645e18`) and `1` printed as
+  `1.0`. Each column also took its type from the first row, so a later value of
+  another type, or any value in a column that started null, printed empty. Each
+  cell is now the decoded value; JSON output was already exact.
 - Requires `packdb-client` with the transport and error changes of
   packdb-oss/packdb-sdk#34, with the query API client (`QueryApiClient`) of
-  packdb-oss/packdb-sdk#36, and without `tonic`'s `zstd` feature
-  (packdb-oss/packdb-sdk#37).
+  packdb-oss/packdb-sdk#36, without `tonic`'s `zstd` feature
+  (packdb-oss/packdb-sdk#37), and with exact table and CSV cells
+  (packdb-oss/packdb-sdk#42).
 
 ## 0.2.4
 

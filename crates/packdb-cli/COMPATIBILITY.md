@@ -98,8 +98,17 @@ server. `--help` and `--version` exit `0`.
 
 - **stdout carries the result and nothing else.** Warnings, notes and errors go to
   stderr, prefixed `warning: `, `note: ` or `error: `.
-- `--format table` (default) and `--format csv` print the rows. `--format json`
-  prints one JSON object:
+- `--format table` (default) and `--format csv` print the rows. Each cell is the
+  decoded value as JSON writes it:
+  - integers are exact at any size `i64` or `u64` holds, and floats are in shortest
+    round-trip form;
+  - strings are unquoted, booleans are `true` or `false`, and arrays and objects are
+    compact JSON;
+  - a null or a missing column is an empty cell.
+
+  Columns are every key in the order first seen. This keeps the decoded value; it
+  is not the server's byte-for-byte number formatting. `--format json` prints one
+  JSON object:
 
   ```json
   {
