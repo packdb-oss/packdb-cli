@@ -15,9 +15,8 @@ is assembled with the server. `packdb-query`, the binary of releases 0.2.0 to
 0.2.4, is retired; its archives remain on
 [GitHub Releases](https://github.com/packdb-oss/packdb-cli/releases) unchanged.
 
-Server implementations, control-plane access, credential issuance, tenant
-resolution, admission, placement, routing and other commercial service contracts
-are outside this repository.
+This workspace provides client-side commands. It does not implement the server
+or issue credentials.
 
 ## Status and use
 

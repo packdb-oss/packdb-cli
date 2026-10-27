@@ -168,9 +168,9 @@ organization plan and usage before activation. [GitHub Actions billing](https://
 
 Public execution is still subject to runner capacity and usage policies; do not
 assume free standard-runner time means unlimited compute or storage. No large paid
-runners, persistent self-hosted runners, GPU jobs, commercial workloads or paid
-Actions are required by the OSS baseline. Keep commercial soak and deployment
-work in the internal org. [GitHub Actions usage](https://docs.github.com/en/actions/concepts/billing-and-usage).
+runners, persistent self-hosted runners, GPU jobs or paid Actions are required by
+the OSS baseline. This baseline covers repository checks and release candidates;
+application deployment is outside its scope. [GitHub Actions usage](https://docs.github.com/en/actions/concepts/billing-and-usage).
 
 Use this operating budget, not an unmeasured promise that the builds already fit:
 
