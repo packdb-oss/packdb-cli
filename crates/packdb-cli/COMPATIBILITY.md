@@ -351,9 +351,11 @@ request's tenant.
 
 It is an operator command, not a report of the caller's own usage: memory and ingest
 are process-wide, and storage is the server's own monitoring tenant, whatever tenant
-the credential belongs to. With authentication enabled the route requires the
-server's admin permission; with authentication disabled, who can call it depends on
-the deployment's network boundary.
+the credential belongs to. The open-source server installs no authentication layer,
+so who can call it depends on the deployment's network boundary. A server that
+authenticates requests admits only a deployment operator: a user holding
+`operator:access` whose credential is not bound to one tenant. A tenant
+administrator's credential is refused with `403` (exit `5`).
 
 Each measurement keeps the scope and period the server declares, and the report
 refuses an answer whose declarations differ from these:
