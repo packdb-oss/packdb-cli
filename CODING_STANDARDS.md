@@ -4,8 +4,8 @@ Use Rust 2024 with an explicit MSRV (initially 1.94.1). Changes to MSRV, public
 features, dependencies, wire contracts or storage formats require release notes.
 Prefer small domain modules and minimal dependencies. Core owns protocol-neutral
 primitives, API owns public wire shapes, OTEL owns context propagation, and the client
-owns transport and presentation helpers. Libraries must not depend on applications or
-commercial crates. Test complete feature combinations deliberately.
+owns transport and presentation helpers. Libraries must depend only on public, reusable
+libraries, never on applications. Test complete feature combinations deliberately.
 
 Use rustfmt, snake_case modules/functions and CamelCase types. Production paths
 use Result/Option, checked conversions and bounds checks. Deny Clippy's unwrap_used,
