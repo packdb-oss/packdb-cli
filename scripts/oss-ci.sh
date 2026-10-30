@@ -106,6 +106,21 @@ EOF
     log "sibling SDK checkout: $(cd "$sdk" && git rev-parse HEAD 2>/dev/null || echo 'not a git checkout')"
 }
 
+# `packdb` is a client: it must never be able to start a server, so it may not
+# depend on one. Every PackDB package in its normal and build dependency closure,
+# with every feature enabled, must be this package or the SDK it builds on. A
+# server package -- `packdb` or any other `packdb-*` crate -- fails the gate.
+readonly CLIENT_PACKDB_PACKAGES="packdb-cli packdb-client packdb-otel"
+check_client_dependencies() {
+    log "client dependency closure"
+    local closure unexpected
+    closure="$(cargo tree --locked -p packdb-cli --all-features -e normal,build \
+        --prefix none --format '{p}')" || die "cargo tree failed for packdb-cli"
+    unexpected="$(awk '{print $1}' <<<"$closure" | sort -u |
+        grep -E '^packdb($|-)' | grep -vxF -f <(tr ' ' '\n' <<<"$CLIENT_PACKDB_PACKAGES") || true)"
+    [[ -z "$unexpected" ]] || die "packdb-cli depends on a server package: $unexpected"
+}
+
 check_policy() {
     log "policy files and contacts"
     local f
@@ -164,9 +179,9 @@ PY
     for package in "${PACKAGES[@]}"; do
         listed="$(cargo package --list --locked --allow-dirty -p "$package" 2>/dev/null)" ||
             die "cargo package --list failed for $package"
-        # A library crate -- and the contract must travel inside the archive,
+        # The library and the binary -- and the contract must travel inside the archive,
         # not merely exist in the repo.
-        for required in Cargo.toml README.md LICENSE COMPATIBILITY.md src/lib.rs; do
+        for required in Cargo.toml README.md LICENSE COMPATIBILITY.md src/lib.rs src/main.rs; do
             grep -qx "$required" <<<"$listed" || die "$package package is missing $required"
         done
         if grep -E '(^|/)(target|dist)/|\.profraw$' <<<"$listed"; then
@@ -175,10 +190,10 @@ PY
     done
 }
 
-# The workspace has one library, `packdb-cli`, and one test-only executable,
-# `packdb-cli-test-harness`, whose tests run the library as a process to check
-# stdout, stderr and exit codes. `--all-targets` runs both; `--doc` covers the
-# library's documentation examples.
+# The workspace has one package, `packdb-cli`: the command library and the
+# `packdb` binary, whose process tests check stdout, stderr and exit codes.
+# `--all-targets` runs both; `--doc` covers the library's documentation
+# examples.
 feature_matrix() {
     local toolchain="$1"
     cargo "+$toolchain" test --locked --workspace --all-targets
@@ -197,6 +212,7 @@ cmd_checks() {
     python3 scripts/check_action_pins.py --self-test
     python3 scripts/check_source_headers.py
     require_sdk_sibling
+    check_client_dependencies
     python3 scripts/export_clean.py
     python3 scripts/coverage_gate.py --self-test
     cargo fmt --all -- --check
@@ -229,10 +245,8 @@ cmd_compatibility() {
     check_gate_input compatibility
     scope >/dev/null
     require_sdk_sibling
-    # The command contract is checked through the test harness: its tests run
-    # the library as a process and assert stdout, stderr and exit codes. This
-    # repository ships no executable; the `packdb` binary is assembled with the
-    # server.
+    # The command contract is checked through the `packdb` binary: its process
+    # tests assert stdout, stderr and exit codes.
     feature_matrix "$MSRV"
 }
 

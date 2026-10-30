@@ -1,18 +1,18 @@
 # PackDB command library
 
-`packdb-cli` is the command library behind `packdb`, PackDB's command-line
-client. It implements `packdb query sql|promql|logql|traceql`, `packdb trace`,
+`packdb-cli` builds `packdb`, PackDB's command-line client, and the command
+library behind it. It implements `packdb query sql|promql|logql|traceql`, `packdb trace`,
 `packdb doctor` (limited diagnostics), `packdb smoke-test`, `packdb support-bundle` and
 `packdb usage-report`.
 
 | Package | Scope |
 | --- | --- |
-| `packdb-cli` | The command library: arguments, credentials, output, completeness and exit codes |
-| `packdb-cli-test-harness` | Test-only executable that runs the library as a process; never released |
+| `packdb-cli` | The `packdb` binary and its command library: arguments, credentials, output, completeness and exit codes |
 
-This repository ships no executable. The `packdb` binary that embeds the library
-is assembled with the server. `packdb-query`, the binary of releases 0.2.0 to
-0.2.4, is retired; its archives remain on
+`packdb` is a client only. It never starts a server and depends on no server
+package; the single-node server is `packdb-server`, built from the server
+repository. `packdb-query`, the binary of releases 0.2.0 to 0.2.4, is retired;
+its archives remain on
 [GitHub Releases](https://github.com/packdb-oss/packdb-cli/releases) unchanged.
 
 This workspace provides client-side commands. It does not implement the server

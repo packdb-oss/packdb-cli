@@ -1,9 +1,9 @@
 # `packdb` command contract
 
 What the `packdb` client commands promise their callers. This library implements
-them; the `packdb` binary that embeds it is assembled with the server. Until that
-binary exists, the contract is tested through `packdb-cli-test-harness`, a
-test-only executable that is never released.
+them, and this crate's `packdb` binary runs them. `packdb` is a client only: the
+single-node server is `packdb-server`, built from the server repository, and each
+reports its own version.
 
 Read as: anything in **The contract** changes only with a deliberate, documented
 decision. Anything under **Not promised** may change without one.
@@ -463,10 +463,12 @@ refuses an answer whose declarations differ from these:
   unavailable value reported as missing evidence and never as zero, a server without
   the route, answers with a wrong schema, scope, period, omitted or negative value,
   `401`, `403` and an unreachable server.
-- `crates/packdb-cli-test-harness/tests/process.rs`: the same contract as a process
-  sees it, covering help, the refused secret argument, stdout/stderr separation,
-  exit codes, credential files, conflicts, a closed stdout (exit `8`), the PromQL,
-  trace and time-argument cases, `doctor` and `usage-report`.
+- `crates/packdb-cli/tests/process.rs`: the same contract as the `packdb` binary
+  shows it, covering help for every command, `--version`, bare `packdb` exiting `2`
+  promptly without creating files, the refused secret argument, stdout/stderr
+  separation, exit codes, credential files, conflicts, a closed stdout (exit `8`),
+  help, `--version`, usage errors and bare `packdb` on an unwritable stream (exit `8`),
+  the PromQL, trace and time-argument cases, `doctor` and `usage-report`.
 - `packdb-client`'s own tests cover the transport fallback rules, the query API
   requests and error classification.
 

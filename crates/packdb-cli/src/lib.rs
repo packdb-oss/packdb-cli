@@ -15,8 +15,8 @@
 //! The command library behind `packdb`.
 //!
 //! [`Command`] is a clap subcommand set; [`run`] executes one against a running
-//! PackDB server and returns its [`Exit`] status. The library ships no
-//! executable: the `packdb` binary that embeds it is assembled with the server.
+//! PackDB server and returns its [`Exit`] status. This crate's `packdb` binary
+//! runs it; the library is the shared API for any other front end.
 //! `COMPATIBILITY.md` is the supported contract: arguments, environment,
 //! output and exit codes.
 
