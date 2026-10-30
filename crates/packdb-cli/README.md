@@ -1,12 +1,13 @@
 # `packdb-cli`
 
-The command library behind `packdb`: queries, trace lookup, limited `doctor`
-diagnostics, `smoke-test`, `support-bundle` and `usage-report` against a running
-PackDB server.
+`packdb`, PackDB's command-line client, and the command library behind it:
+queries, trace lookup, limited `doctor` diagnostics, `smoke-test`,
+`support-bundle` and `usage-report` against a running PackDB server.
 
-This crate ships no executable. The `packdb` binary that embeds it is assembled
-with the server. `packdb-query`, the binary of releases 0.2.0 to 0.2.4, is
-retired; its released archives are unchanged.
+The crate builds the `packdb` binary and exports the library it runs (`Command`,
+`run`, `Io`). `packdb` never starts a server; the single-node server is
+`packdb-server`, built from the server repository. `packdb-query`, the binary of
+releases 0.2.0 to 0.2.4, is retired; its released archives are unchanged.
 
 The supported surface — arguments, environment variables, output, completeness
 and exit codes — is written down in [`COMPATIBILITY.md`](./COMPATIBILITY.md),

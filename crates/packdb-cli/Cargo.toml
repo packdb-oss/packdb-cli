@@ -3,7 +3,7 @@ name = "packdb-cli"
 version = "0.2.4"
 edition = "2024"
 rust-version = "1.94.1"
-description = "The command library behind the PackDB `packdb` command: queries and operator commands against a running server."
+description = "PackDB's `packdb` command-line client and the command library behind it: queries and operator commands against a running server."
 license = "Apache-2.0"
 readme = "README.md"
 keywords = ["packdb", "cli", "sql", "query"]
@@ -11,6 +11,12 @@ repository = "https://github.com/packdb-oss/packdb-cli"
 # Registry publication remains disabled. Enabling it requires
 # a separate reviewed allowlist change and release authorization.
 publish = false
+
+# The `packdb` client. The library stays the shared API: `Command`, `run` and
+# `Io` are what the binary, and any other front end, call.
+[[bin]]
+name = "packdb"
+path = "src/main.rs"
 
 [dependencies]
 # Enable the `sql` feature so the SQL client (including Arrow result
@@ -33,14 +39,14 @@ serde_json = { version = "1", features = ["preserve_order"] }
 # The support bundle's archive container and its temporary file.
 tar = { version = "0.4", default-features = false }
 tempfile = "3"
-tokio = { version = "1.49", features = ["macros", "time"] }
+tokio = { version = "1.49", features = ["macros", "rt", "time"] }
 # The `smoke-test` run marker and trace and span identifiers.
 uuid = { version = "1", features = ["v4"] }
 # Compresses the support bundle.
 zstd = { version = "0.14", default-features = false }
 
 [dev-dependencies]
-tokio = { version = "1.49", features = ["macros", "rt"] }
+tokio = { version = "1.49", features = ["macros", "rt", "rt-multi-thread"] }
 wiremock = "0.6"
 
 [features]

@@ -22,7 +22,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/packdb-cli", "crates/packdb-cli-test-harness"]
+members = ["crates/packdb-cli"]
 
 [workspace.package]
 edition = "2024"

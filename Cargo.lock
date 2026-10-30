@@ -1655,17 +1655,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "packdb-cli-test-harness"
-version = "0.2.4"
-dependencies = [
- "clap",
- "packdb-cli",
- "serde_json",
- "tokio",
- "wiremock",
-]
-
-[[package]]
 name = "packdb-client"
 version = "0.2.4"
 dependencies = [

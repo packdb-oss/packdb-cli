@@ -12,9 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Runs the `packdb-cli` command library as a process, so tests can assert
-//! real stdout, stderr and exit codes. Test-only: it is never released, and
-//! it is not the `packdb` binary, which is assembled with the server.
+//! `packdb`, PackDB's command-line client. It parses a [`packdb_cli::Command`]
+//! and exits with the status [`packdb_cli::run`] returns; the commands
+//! themselves live in the library. It never starts a server: the single-node
+//! server is `packdb-server`, built from the server repository.
+
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::panic)]
+#![deny(clippy::unreachable)]
 
 use std::process::ExitCode;
 
@@ -24,7 +31,7 @@ use clap::Parser;
 #[command(
     name = "packdb",
     version,
-    about = "PackDB client commands (test harness)",
+    about = "PackDB command-line client: queries and operator commands against a running PackDB server",
     arg_required_else_help = true,
     subcommand_required = true
 )]
@@ -35,7 +42,8 @@ struct Cli {
 
 fn main() -> ExitCode {
     // clap prints help and exits 2 when no subcommand is given, exits 2 on any
-    // other usage error, and exits 0 for --help and --version.
+    // other usage error, and exits 0 for --help and --version. Parsing comes
+    // first, so none of those paths builds a runtime or opens a connection.
     let cli = Cli::parse();
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()

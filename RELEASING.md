@@ -10,9 +10,10 @@ GitHub releases and crates.io publication are separate decisions; crates.io is p
 cannot resolve from the registry, until `packdb-otel` and then `packdb-client` are
 on crates.io. Do not attempt them in the other order.
 
-This repository releases source only. The `packdb` binary that embeds the library
-is built and released with the server; `packdb-query` binary archives of 0.2.0 to
-0.2.4 stay on their GitHub Releases unchanged.
+This repository releases source. The `packdb` client binary builds from it; how
+`packdb` and `packdb-server` binaries are distributed is decided separately.
+`packdb-query` binary archives of 0.2.0 to 0.2.4 stay on their GitHub Releases
+unchanged.
 
 ## Private candidates
 
@@ -21,7 +22,7 @@ is built and released with the server; `packdb-query` binary archives of 0.2.0 t
 3. Inspect `cargo package --list`. The package must include its README, LICENSE and
    COMPATIBILITY.md, and exclude private data and internal-only source.
 4. Dispatch `oss-candidate`. It reruns every gate on the exact commit, including
-   the test harness's process-level contract tests, and records the source archive,
+   the `packdb` binary's process-level contract tests, and records the source archive,
    package and source inventories, dependency inventory, checksums and the SDK
    revision it was built against.
 5. Review the source archive, dependency inventory, checksums and release record. A

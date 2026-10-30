@@ -6,8 +6,12 @@ Breaking. `packdb-query` is retired in favour of `packdb`, whose command library
 this repository now provides; its 0.2.x archives are unchanged. See
 `crates/packdb-cli/COMPATIBILITY.md` for the contract and the migration table.
 
-- The package is `packdb-cli`, a library with no executable. `packdb query sql`
-  replaces `packdb-query`; the `packdb` binary is assembled with the server.
+- The package is `packdb-cli`. It builds the `packdb` client binary, and its
+  library (`Command`, `run`, `Io`) stays the shared API. `packdb query sql`
+  replaces `packdb-query`. `packdb` never starts a server and depends on no
+  server package; the single-node server is `packdb-server`, built from the
+  server repository. The test-only `packdb-cli-test-harness` is removed: its
+  process tests now run the real binary.
 - Credentials never come from argument values: `--api-key-file`, `--token-file`
   and `--basic-auth-file`, or `PACKDB_API_KEY`, `PACKDB_TOKEN`, `PACKDB_BASIC_AUTH`
   and their `_FILE` forms. Two credentials are refused instead of the first
