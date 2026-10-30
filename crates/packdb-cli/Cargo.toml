@@ -1,6 +1,6 @@
 [package]
 name = "packdb-cli"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.94.1"
 description = "PackDB's `packdb` command-line client and the command library behind it: queries and operator commands against a running server."
@@ -22,7 +22,7 @@ path = "src/main.rs"
 # Enable the `sql` feature so the SQL client (including Arrow result
 # formatting) is compiled in. Flight SQL transport is opt-in via the
 # flight-sql feature on this crate, which forwards to packdb-client.
-packdb-client = { version = "0.2.4", features = ["sql"] }
+packdb-client = { version = "0.3.0", features = ["sql"] }
 clap = { version = "4.5", features = ["derive"] }
 http = "1"
 # SHA-256 for the support bundle's manifest; already the TLS stack's crypto.
