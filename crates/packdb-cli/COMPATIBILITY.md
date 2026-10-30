@@ -467,6 +467,7 @@ refuses an answer whose declarations differ from these:
   shows it, covering help for every command, `--version`, bare `packdb` exiting `2`
   promptly without creating files, the refused secret argument, stdout/stderr
   separation, exit codes, credential files, conflicts, a closed stdout (exit `8`),
+  help, `--version`, usage errors and bare `packdb` on an unwritable stream (exit `8`),
   the PromQL, trace and time-argument cases, `doctor` and `usage-report`.
 - `packdb-client`'s own tests cover the transport fallback rules, the query API
   requests and error classification.

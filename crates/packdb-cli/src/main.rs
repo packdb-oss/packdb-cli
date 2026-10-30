@@ -23,9 +23,11 @@
 #![deny(clippy::panic)]
 #![deny(clippy::unreachable)]
 
+use std::io::{IsTerminal, Write};
 use std::process::ExitCode;
 
 use clap::Parser;
+use packdb_cli::Exit;
 
 #[derive(Parser)]
 #[command(
@@ -41,29 +43,84 @@ struct Cli {
 }
 
 fn main() -> ExitCode {
-    // clap prints help and exits 2 when no subcommand is given, exits 2 on any
-    // other usage error, and exits 0 for --help and --version. Parsing comes
-    // first, so none of those paths builds a runtime or opens a connection.
-    let cli = Cli::parse();
+    let mut stdout = std::io::stdout().lock();
+    let mut stderr = std::io::stderr().lock();
+    // Parsing comes first, so help, version and usage errors never build a
+    // runtime or open a connection. clap renders them; this process writes
+    // them, so a failed write is reported like any other output failure.
+    let exit = match Cli::try_parse() {
+        Ok(cli) => execute(cli.command, &mut stdout, &mut stderr),
+        Err(error) => deliver_parse_outcome(&error, &mut stdout, &mut stderr),
+    };
+    ExitCode::from(exit.code())
+}
+
+fn execute(command: packdb_cli::Command, stdout: &mut dyn Write, stderr: &mut dyn Write) -> Exit {
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
     {
         Ok(runtime) => runtime,
         Err(error) => {
-            eprintln!("error: cannot start the runtime: {error}");
-            return ExitCode::from(packdb_cli::Exit::Usage.code());
+            return match writeln!(stderr, "error: cannot start the runtime: {error}")
+                .and_then(|()| stderr.flush())
+            {
+                Ok(()) => Exit::Usage,
+                Err(_) => Exit::OutputFailed,
+            };
         }
     };
-    let mut stdout = std::io::stdout().lock();
-    let mut stderr = std::io::stderr().lock();
-    let exit = runtime.block_on(packdb_cli::run(
-        cli.command,
+    runtime.block_on(packdb_cli::run(
+        command,
         packdb_cli::Io {
-            stdout: &mut stdout,
-            stderr: &mut stderr,
+            stdout,
+            stderr,
             env: &packdb_cli::ProcessEnvironment,
         },
-    ));
-    ExitCode::from(exit.code())
+    ))
+}
+
+/// Write what clap rendered: `--help` and `--version` on stdout with `0`;
+/// bare `packdb`'s help and every usage error on stderr with `2`. Output that
+/// cannot be written or flushed exits `8`, as the contract promises.
+fn deliver_parse_outcome(
+    error: &clap::Error,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Exit {
+    let exit = if error.exit_code() == 0 {
+        Exit::Success
+    } else {
+        Exit::Usage
+    };
+    let on_stderr = error.use_stderr();
+    let styled = if on_stderr {
+        std::io::stderr().is_terminal()
+    } else {
+        std::io::stdout().is_terminal()
+    };
+    let rendered = error.render();
+    let text = if styled {
+        rendered.ansi().to_string()
+    } else {
+        rendered.to_string()
+    };
+    let stream: &mut dyn Write = if on_stderr { stderr } else { stdout };
+    match stream
+        .write_all(text.as_bytes())
+        .and_then(|()| stream.flush())
+    {
+        Ok(()) => exit,
+        Err(failure) => {
+            if !on_stderr {
+                // Best effort: if this report cannot be written either, the
+                // exit code still says the output failed.
+                drop(
+                    writeln!(stderr, "error: cannot write to stdout: {failure}")
+                        .and_then(|()| stderr.flush()),
+                );
+            }
+            Exit::OutputFailed
+        }
+    }
 }

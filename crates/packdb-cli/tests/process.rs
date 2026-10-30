@@ -42,6 +42,30 @@ const VARIABLES: [&str; 11] = [
     "PACKDB_URL",
 ];
 
+/// Held while a child is spawned and while a pipe's reading end is closed.
+///
+/// A spawned child holds a copy of every descriptor this process has open
+/// until it execs. A closed-pipe case is only deterministic if no such copy
+/// of its reading end survives the close, so no spawn may be in flight then.
+/// `spawn` returns after the child has exec'd, so holding this across each
+/// spawn and each close is enough.
+static SPAWN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn spawn_lock() -> std::sync::MutexGuard<'static, ()> {
+    SPAWN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Spawn `command` with the lock held, then wait for its output without it.
+fn output(command: &mut Command) -> Output {
+    let child = {
+        let _spawning = spawn_lock();
+        command.spawn().expect("spawn packdb")
+    };
+    child.wait_with_output().expect("wait for packdb")
+}
+
 async fn packdb(args: &[&str], env: &[(&str, &str)]) -> Output {
     let args: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
     let env: Vec<(String, String)> = env
@@ -53,7 +77,14 @@ async fn packdb(args: &[&str], env: &[(&str, &str)]) -> Output {
         for variable in VARIABLES {
             command.env_remove(variable);
         }
-        command.args(&args).envs(env).output().expect("run packdb")
+        output(
+            command
+                .args(&args)
+                .envs(env)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped()),
+        )
     })
     .await
     .expect("join")
@@ -165,6 +196,7 @@ async fn bare_packdb_exits_2_promptly_and_creates_no_files() {
         for variable in VARIABLES {
             command.env_remove(variable);
         }
+        let spawning = spawn_lock();
         let mut child = command
             .current_dir(&cwd_path)
             .env("HOME", &home_path)
@@ -177,6 +209,7 @@ async fn bare_packdb_exits_2_promptly_and_creates_no_files() {
             .stderr(Stdio::piped())
             .spawn()
             .expect("spawn packdb");
+        drop(spawning);
         // A process still running after this long is serving, not printing
         // help. Stop it so the failure is reported rather than hanging the run.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
@@ -342,6 +375,70 @@ async fn conflicting_credentials_exit_2_without_contacting_the_server() {
     assert!(!stderr.contains("secret-"), "{stderr}");
 }
 
+/// Which of `packdb`'s streams a case makes unwritable.
+#[derive(Debug, Clone, Copy)]
+enum Closed {
+    Stdout,
+    Stderr,
+}
+
+/// Run `packdb` with one stream a pipe whose reading end is already closed,
+/// so every write to it fails with a broken pipe. (A read-only file would not
+/// do: the standard library treats `EBADF` on stdout as a closed stdout and
+/// discards the write.) The other stream is captured.
+async fn with_closed(args: &[&str], closed: Closed) -> Output {
+    let args: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
+    tokio::task::spawn_blocking(move || {
+        let writer = {
+            let _closing = spawn_lock();
+            let (reader, writer) = std::io::pipe().expect("pipe");
+            drop(reader);
+            writer
+        };
+        let mut command = Command::new(PACKDB);
+        for variable in VARIABLES {
+            command.env_remove(variable);
+        }
+        command.args(&args).stdin(Stdio::null());
+        match closed {
+            Closed::Stdout => command.stdout(writer).stderr(Stdio::piped()),
+            Closed::Stderr => command.stdout(Stdio::piped()).stderr(writer),
+        };
+        output(&mut command)
+    })
+    .await
+    .expect("join")
+}
+
+/// What clap renders -- help, the version, a usage error, bare `packdb`'s
+/// help -- is output like any other: when its stream cannot be written,
+/// `packdb` exits 8 instead of 0 or 2.
+#[tokio::test(flavor = "multi_thread")]
+async fn help_version_and_usage_errors_on_a_closed_stream_exit_8() {
+    for (args, closed) in [
+        (&["--help"][..], Closed::Stdout),
+        (&["query", "sql", "--help"], Closed::Stdout),
+        (&["--version"], Closed::Stdout),
+        (&["query", "sql"], Closed::Stderr),
+        (&["no-such-command"], Closed::Stderr),
+        (&[], Closed::Stderr),
+    ] {
+        let output = with_closed(args, closed).await;
+        assert_eq!(
+            output.status.code(),
+            Some(8),
+            "{args:?} with {closed:?} unwritable"
+        );
+        if let Closed::Stdout = closed {
+            assert!(
+                text(&output.stderr).contains("cannot write to stdout"),
+                "{args:?}: {}",
+                text(&output.stderr)
+            );
+        }
+    }
+}
+
 /// A reader that goes away before the result is written: the write fails with
 /// a broken pipe, and the command reports it as exit 8 instead of succeeding.
 ///
@@ -374,6 +471,7 @@ async fn a_closed_stdout_exits_8() {
         for variable in VARIABLES {
             command.env_remove(variable);
         }
+        let spawning = spawn_lock();
         let mut child = command
             .args([
                 "query",
@@ -388,7 +486,9 @@ async fn a_closed_stdout_exits_8() {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn packdb");
+        // Still holding the lock: no other spawn can copy the reading end.
         drop(child.stdout.take());
+        drop(spawning);
         closed.send(()).expect("release the reply");
         child.wait().expect("wait for packdb")
     })
