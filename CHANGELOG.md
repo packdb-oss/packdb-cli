@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 Breaking. `packdb-query` is retired in favour of `packdb`, whose command library
 this repository now provides; its 0.2.x archives are unchanged. See
@@ -75,10 +75,10 @@ this repository now provides; its 0.2.x archives are unchanged. See
   `1.0`. Each column also took its type from the first row, so a later value of
   another type, or any value in a column that started null, printed empty. Each
   cell is now the decoded value; JSON output was already exact.
-- Requires `packdb-client` with the transport and error changes of
-  packdb-oss/packdb-sdk#34, with the query API client (`QueryApiClient`) of
-  packdb-oss/packdb-sdk#36, without `tonic`'s `zstd` feature
-  (packdb-oss/packdb-sdk#37), and with exact table and CSV cells
+- Build against SDK 0.3.0 (`packdb-client` and `packdb-otel` 0.3.0): the
+  transport and error changes of packdb-oss/packdb-sdk#34, the query API client
+  (`QueryApiClient`) of packdb-oss/packdb-sdk#36, no `tonic` `zstd` feature
+  (packdb-oss/packdb-sdk#37), and exact table and CSV cells
   (packdb-oss/packdb-sdk#42).
 
 ## 0.2.4

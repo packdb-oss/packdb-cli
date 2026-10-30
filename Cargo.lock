@@ -1635,7 +1635,7 @@ dependencies = [
 
 [[package]]
 name = "packdb-cli"
-version = "0.2.4"
+version = "0.3.0"
 dependencies = [
  "aws-lc-rs",
  "clap",
@@ -1656,7 +1656,7 @@ dependencies = [
 
 [[package]]
 name = "packdb-client"
-version = "0.2.4"
+version = "0.3.0"
 dependencies = [
  "arrow",
  "arrow-flight",
@@ -1678,7 +1678,7 @@ dependencies = [
 
 [[package]]
 name = "packdb-otel"
-version = "0.2.4"
+version = "0.3.0"
 dependencies = [
  "http",
  "opentelemetry",
